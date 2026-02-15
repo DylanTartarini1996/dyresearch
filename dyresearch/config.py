@@ -50,7 +50,6 @@ class LLMConf(BaseModel):
     -----------
     `type`: LLM `ModelType` 
     `temperature`: LLM temperature param
-    `deployment`: represents the name of the deployment.
     `model`: represents the name of the model
     `api_key`: reference to the OpenAI (or Groq, or Azure OpenAI) API key, if any
     `endpoint`: reference to the endpoint of the model, if any
@@ -58,7 +57,6 @@ class LLMConf(BaseModel):
     model: str
     temperature: float = 0.0
     type: ModelType="openai"
-    deployment: Optional[str]=None
     api_key: Optional[str]=None
     endpoint: Optional[str]=None
     api_version: Optional[str] = None
