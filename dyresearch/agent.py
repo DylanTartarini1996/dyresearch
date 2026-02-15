@@ -5,6 +5,7 @@ from google.adk.agents.llm_agent import Agent
 
 from .agents.professor import professor 
 from .agents.researcher import researcher
+from .callbacks import initialize_study_state
 from .config import LLMConf
 from .factory.llm_providers import get_litellm_model
 
@@ -19,6 +20,7 @@ conf = LLMConf(
 
 model = get_litellm_model(conf)
 
+
 root_agent = Agent(
     model=model,
     name='coordinator',
@@ -28,3 +30,6 @@ root_agent = Agent(
                 "or the Professor Agent ",
     sub_agents=[researcher, professor],
 )
+
+# Attach the initialize study state to the agent
+root_agent.before_agent_callback = initialize_study_state
