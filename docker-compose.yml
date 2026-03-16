@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   app:
     build: .
@@ -10,7 +8,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      
+    environment:
+      SESSION_SERVICE_URI: "postgresql+asyncpg://adk_user:adk_password@postgres:5432/adk_history"
     volumes:
       - .:/app
     networks:
@@ -19,24 +18,23 @@ services:
   
   postgres: 
     image: postgres:15
-    container_name: postgres
+    container_name: adk-postgres
     restart: always
     ports:
       - "5432:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
     environment:
-      - POSTGRES_USER=myuser
-      - POSTGRES_PASSWORD=mypassword
-      - POSTGRES_DB=mydb
+      POSTGRES_USER: adk_user
+      POSTGRES_PASSWORD: adk_password
+      POSTGRES_DB: adk_history
     networks:
       - graphnet
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U myuser -d mydb"] # Check both user AND db
+      test: ["CMD-SHELL", "pg_isready -U adk_user -d adk_history"] # Check both user AND db
       interval: 5s
       timeout: 5s
       retries: 5
-    
 
 volumes:
   pg_data: 

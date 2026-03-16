@@ -5,13 +5,14 @@ FROM python:3.12-slim AS builder
 
 USER root
 
+# 1. Install build tools for psycopg2 (gcc and libpq-dev)
+RUN apt-get update && apt-get install -y gcc libpq-dev && rm -rf /var/lib/apt/lists/*
 
-# Install uv (fast dependency manager)
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+# 2. Safely grab uv without needing curl
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
-# Add uv to PATH
-ENV PATH="/root/.local/bin:$PATH" \
-    UV_SYSTEM_PYTHON=1 \
+# Set environment vars
+ENV UV_SYSTEM_PYTHON=1 \
     PYTHONUNBUFFERED=1
 
 # Set work directory
@@ -24,7 +25,6 @@ RUN uv sync
 
 # Copy application code
 COPY dyresearch ./dyresearch
-COPY agent.py ./agent.py
 COPY config.env ./config.env
 
 
@@ -35,13 +35,14 @@ FROM python:3.12-slim
 
 USER root
 
+# 3. Install the Postgres runtime library so psycopg2 can actually connect
+RUN apt-get update && apt-get install -y libpq5 && rm -rf /var/lib/apt/lists/*
 
-# Install uv (small single binary, no build tools)
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+# Safely grab uv without needing curl
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
 # Set environment vars
-ENV PATH="/root/.local/bin:$PATH" \
-    UV_SYSTEM_PYTHON=1 \
+ENV UV_SYSTEM_PYTHON=1 \
     PYTHONUNBUFFERED=1
 
 WORKDIR /dyresearch
@@ -54,4 +55,6 @@ COPY --from=builder /dyresearch /dyresearch
 # Expose FastAPI port
 EXPOSE 8000
 
-ENTRYPOINT ["uv", "run", "adk", "web", "--host", "0.0.0.0", "--port", "8000"]
+# ENTRYPOINT ["uv", "run", "adk", "web", "--host", "0.0.0.0", "--port", "8000" "--session_service_uri" "$SESSION_SERVICE_URI"]
+
+ENTRYPOINT ["sh", "-c", "uv run adk web --host 0.0.0.0 --port 8000 --session_service_uri $SESSION_SERVICE_URI"]
