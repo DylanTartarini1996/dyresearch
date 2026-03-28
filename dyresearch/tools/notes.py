@@ -14,7 +14,7 @@ logger = get_logger(__name__)
 
 class NoteTakingToolset(BaseToolset):
 
-    def __init__(self, tool_name_prefix: str = "study"):
+    def __init__(self, tool_name_prefix: str = "notes"):
         self.tool_name_prefix = tool_name_prefix
         self._create_tool = FunctionTool(func=create_obsidian_note)
         self._append_tool = FunctionTool(func=append_to_obsidian_note)

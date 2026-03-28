@@ -17,7 +17,7 @@ conf = LLMConf(
 
 model = get_litellm_model(conf)
 
-researcher = Agent(
+research_agent = Agent(
     model=model,
     name='researcher_agent',
     description='A helpful assistant for user questions regarding the news on AI.',
