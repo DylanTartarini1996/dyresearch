@@ -19,7 +19,7 @@ class ModelType(str, Enum):
     GROQ = "groq"
     OPENAI = "openai"
     OLLAMA = "ollama"
-    TRANSFORMERS = "trf"
+    HF = "hugging-face"
 
 
 class ChunkerType(str, Enum):
@@ -56,7 +56,7 @@ class LLMConf(BaseModel):
     """
     model: str
     temperature: float = 0.0
-    type: ModelType="openai"
+    type: ModelType="google"
     api_key: Optional[str]=None
     endpoint: Optional[str]=None
     api_version: Optional[str] = None
@@ -75,8 +75,8 @@ class EmbedderConf(BaseModel):
     `api_key`: reference to the OpenAI (or Azure OpenAI) API key, if any
     `endpoint`: reference to the endpoint of the model, if any
     """
-    type: ModelType = "openai"
-    model: Optional[str] = "text-embedding-ada-002"
+    type: ModelType = "hf"
+    model: Optional[str] = "ibm-granite/granite-embedding-278m-multilingual"
     deployment: Optional[str] = None
     api_key: Optional[str] = None
     endpoint: Optional[str] = None

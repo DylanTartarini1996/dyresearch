@@ -8,10 +8,14 @@ from .agents.researcher import researcher
 from .agents.notetaker import note_taker
 from .callbacks import initialize_study_state
 from .config import LLMConf
+from .factory.database import initialize_database
 from .factory.llm_providers import get_litellm_model
 
 
 load_dotenv("config.env")
+
+initialize_database()
+
 
 conf = LLMConf(
     type="groq",
