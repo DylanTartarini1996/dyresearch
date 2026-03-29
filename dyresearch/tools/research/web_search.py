@@ -1,17 +1,83 @@
+import asyncio
+
 import httpx
 import os
 
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
+from duckduckgo_search import DDGS
 from google import genai
 from google.adk.tools.tool_context import ToolContext
 from google.genai import types
 
+from ...utils.logger import get_logger
+
 
 load_dotenv("config.env")
 
+logger = get_logger(__name__)
 
-async def perform_web_search(query: str, domains: list[str] = None, num_results: int = 5, tool_context: ToolContext = None) -> str:
+
+async def ddgs(query: str, max_results: int = 5) -> str:
+    """
+    Searches the live web using DuckDuckGo. 
+    Can filter results by specific domains (e.g. ['reddit.com', 'arxiv.org']).
+    """
+    try:
+        # Define the synchronous search function
+        def perform_search():
+            with DDGS() as ddgs:
+                # .text() now returns a list directly in newer versions
+                return list(ddgs.text(
+                    query, 
+                    region='wt-wt', 
+                    safesearch='moderate', 
+                    timelimit='y', 
+                    max_results=max_results
+                ))
+
+        logger.info(f"ℹ️ Searching for query {query} using DuckDuckGO..")
+        # Run the synchronous search in a separate thread to keep the agent async
+        search_results = await asyncio.to_thread(perform_search)
+
+        if not search_results:
+            return f"No results found for '{query}'."
+
+        formatted_output = [f"### 🌐 Web Search Results for: {query}"]
+        for i, res in enumerate(search_results, 1):
+            title = res.get('title', 'No Title')
+            url = res.get('href', '#')
+            body = res.get('body', 'No description available.')
+            formatted_output.append(f"{i}. **[{title}]({url})**\n   {body}\n")
+
+        return "\n".join(formatted_output)
+
+    except Exception as e:
+        return f"Error during DuckDuckGo search: {str(e)}"
+    
+
+async def google_search(query: str) -> str:
+    # Initialize a temporary client just for this tool execution
+    client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
+    # Configure the Search Tool Natively
+    search_tool = types.Tool(google_search=types.GoogleSearch())
+    # We make a direct call to Gemini to perform the search
+    response = client.models.generate_content(
+        model=os.getenv("GOOGLE_MODEL_NAME"),
+        contents=query,
+        config=types.GenerateContentConfig(
+            tools=[search_tool],
+        )
+    )
+    return "\n".join(response.candidates)
+
+
+async def perform_web_search(
+        query: str, 
+        domains: list[str] = None, 
+        num_results: int = 5, 
+        tool_context: ToolContext = None
+    ) -> str:
     """
     Searches the Web for the given query and returns a summary with sources.  
     Useful for finding current events, news, or factual information.  
@@ -22,29 +88,17 @@ async def perform_web_search(query: str, domains: list[str] = None, num_results:
     if domains:
         site_filters = " OR ".join([f"site:{domain}" for domain in domains])
         search_query = f"{query} ({site_filters})"
-
-    # Initialize a temporary client just for this tool execution
-    client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
-    
-    # Configure the Search Tool Natively
-    search_tool = types.Tool(
-        google_search=types.GoogleSearch()
-    )
-    
     try:
-        # We make a direct call to Gemini to perform the search
-        response = client.models.generate_content(
-            model=os.getenv("GOOGLE_MODEL_NAME"),
-            contents=search_query,
-            config=types.GenerateContentConfig(
-                tools=[search_tool],
-            )
-        )
-
-        return "\n".join(response.candidates)
-        
+        results = await google_search(search_query)
     except Exception as e:
-        return f"Error performing search: {str(e)}"
+        logger.warning(f"⚠️ Failed to perform search using Gemini's Client: {e}")
+        try: 
+            # fallback to DuckDuckGO
+            results = await ddgs(query=search_query, max_results=num_results)
+        except Exception as e:
+            return f"Error performing search: {str(e)}"
+        
+    return results
 
 
 async def download_document(url: str, filename: str, tool_context: ToolContext = None) -> str:
@@ -115,4 +169,3 @@ async def scrape_website(url: str) -> str:
 
     except Exception as e:
         return f"❌ Failed to scrape website at {url}. Error: {str(e)}"
-    
