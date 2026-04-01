@@ -50,7 +50,9 @@ class DatabaseFactory:
         """Initialize database models asynchronously"""
         async with self.engine.begin() as conn:
             await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+            logger.info("Verified pgvector existence")
             await conn.run_sync(Base.metadata.create_all)
+            logger.info("Created metadata")
 
 
     def get_db_url(self) -> str:
