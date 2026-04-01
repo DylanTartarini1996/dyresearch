@@ -17,7 +17,7 @@ async def ingest_source(
     subject: str="General",
     title: str=None, 
     source_type: str=None, 
-    author: str = None, 
+    authors: str = None, 
     tool_context: ToolContext = None
     ) -> str:
     """
@@ -57,7 +57,7 @@ async def ingest_source(
                     text=chunk_text,
                     source_title=title,
                     source_type=source_type,
-                    author=author,
+                    authors=authors,
                     embedding=vector,
                     subject=subject.lower(),
                     embedding_model=embedder.model
@@ -176,7 +176,7 @@ async def delete_by_subject(subject: str) -> str:
     
 async def search_knowledge_base(
     query: str, 
-    subject_filter: Optional[str] = None,
+    subject_filter: Optional[str] = "",
     limit: int = 5, 
     tool_context: ToolContext = None
     ) -> str:
@@ -193,7 +193,7 @@ async def search_knowledge_base(
 
         async with get_db_context(db_config) as session:
             stmt = select(KnowledgeChunk)
-            if subject_filter:
+            if subject_filter != "":
                 stmt = stmt.where(KnowledgeChunk.subject == subject_filter.lower())
             stmt = stmt.order_by(KnowledgeChunk.embedding.cosine_distance(query_vector)).limit(limit)
             
@@ -201,7 +201,7 @@ async def search_knowledge_base(
             chunks = result.scalars().all()
 
             if not chunks:
-                folder_info = f" in the '{subject_filter}' index" if subject_filter else ""
+                folder_info = f" in the '{subject_filter}' index" if subject_filter != "" else ""
                 return f"I searched the library but found no relevant documents{folder_info}."
 
             # Format the response with clear citations 

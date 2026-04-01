@@ -15,7 +15,7 @@ def get_litellm_model(conf: LLMConf) -> LiteLlm:
         model=f"azure/{conf.model}"
     elif conf.type == ModelType.OLLAMA:
         model=f"ollama/{conf.model}"
-    elif conf.type == ModelType.TRANSFORMERS:
+    elif conf.type == ModelType.HF:
         model=f"huggingface/{conf.model}"
     elif conf.type == ModelType.GOOGLE:
         model=f"{conf.model}"

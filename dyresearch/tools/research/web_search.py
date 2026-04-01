@@ -5,7 +5,7 @@ import os
 
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
-from duckduckgo_search import DDGS
+from ddgs.ddgs import DDGS
 from google import genai
 from google.adk.tools.tool_context import ToolContext
 from google.genai import types
@@ -63,7 +63,7 @@ async def google_search(query: str) -> str:
     search_tool = types.Tool(google_search=types.GoogleSearch())
     # We make a direct call to Gemini to perform the search
     response = client.models.generate_content(
-        model=os.getenv("GOOGLE_MODEL_NAME"),
+        model=os.getenv("GOOGLE_MODEL_NAME_3"),
         contents=query,
         config=types.GenerateContentConfig(
             tools=[search_tool],
