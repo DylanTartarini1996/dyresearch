@@ -7,9 +7,10 @@ requires-python = ">=3.12"
 dependencies = [
     "asyncpg>=0.31.0",
     "beautifulsoup4>=4.14.3",
-    "duckduckgo-search>=8.1.1",
-    "google-adk>=1.23.0",
-    "litellm>=1.81.3",
+    "ddgs>=9.12.0",
+    "google-adk>=1.28.0",
+    "greenlet>=3.3.2",
+    "litellm>=1.83.0",
     "lxml>=6.0.2",
     "pgvector>=0.4.2",
     "psycopg[binary]>=3.1",
