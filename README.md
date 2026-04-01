@@ -30,6 +30,13 @@ Is responsible to digest complex information into useful notes that could be ren
 - draws graphs / mind maps in mermaid.js
 
 
+## 📍Run Locally
+
+````
+uv run adk web --session_service_uri postgresql+asyncpg://adk_user:adk_password@localhost:5432/adk_history
+````
+
+
 ## 🐳 Run with Docker Compose
 
 To run the whole project in a containerized environment
