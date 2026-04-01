@@ -1,14 +1,23 @@
 import os
 import asyncio
+
 from abc import ABC, abstractmethod
+from dotenv import load_dotenv
 from typing import List, Optional
+
 from ..config import EmbedderConf
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+load_dotenv("config.env")
 
-embedder_conf = EmbedderConf()
+
+embedder_conf = EmbedderConf(
+    type=os.getenv("EMBEDDINGS_TYPE"),
+    model=os.getenv("EMBEDDINGS_MODEL_NAME"),
+    api_key=os.getenv("EMBEDDINGS_API_KEY")
+)
 
 
 class BaseEmbedder(ABC):
@@ -83,6 +92,21 @@ class HFEmbedder(BaseEmbedder):
 
     async def embed_documents(self, texts: List[str]) -> List[List[float]]:
         return self.model.encode(texts).tolist()
+    
+
+class GoogleEmbedder(BaseEmbedder):
+    def __init__(self, conf: EmbedderConf):
+        from google import genai
+        self.model = conf.model
+        self.client = genai.Client()
+
+    async def embed_query(self, text: str) -> List[float]:
+        res = self.client.models.embed_content(model=self.model, contents=[text])
+        return res.embeddings[0].values
+    
+    async def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        res = self.client.models.embed_content(model=self.model, contents=texts)
+        return [embedding.values for embedding in res.embeddings]
 
 
 def get_embeddings(conf: EmbedderConf) -> Optional[BaseEmbedder]:
