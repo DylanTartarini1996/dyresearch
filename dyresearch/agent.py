@@ -3,31 +3,27 @@ import os
 from dotenv import load_dotenv
 from google.adk.agents.llm_agent import Agent
 
-from dyresearch.agents import librarian
-
 from .agents import librarian_agent, note_taking_agent, professor_agent, research_agent
 from .callbacks import initialize_study_state
 from .config import LLMConf
-from .factory.database import initialize_database
 from .factory.llm_providers import get_litellm_model
+
 
 
 load_dotenv("config.env")
 
-initialize_database()
-
 
 conf = LLMConf(
-    type="groq",
-    model=os.getenv("GROQ_MODEL_NAME"),
-    api_key=os.getenv("GROQ_API_KEY")
+    type="google",
+    model=os.getenv("GOOGLE_MODEL_NAME"),
+    api_key=os.getenv("GOOGLE_API_KEY")
 )
 
-model = get_litellm_model(conf)
+# model = get_litellm_model(conf)
 
 
 root_agent = Agent(
-    model=model,
+    model=conf.model,
     name='study_coordinator',
     sub_agents=[librarian_agent, note_taking_agent, professor_agent, research_agent],
     description='The primary interface for the AI Study System. Routes tasks between experts.',
@@ -65,5 +61,4 @@ root_agent = Agent(
     )
 )
 
-# Attach the initialize study state to the agent
 root_agent.before_agent_callback = initialize_study_state

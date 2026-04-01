@@ -13,15 +13,15 @@ load_dotenv("config.env")
 research_toolset = ResearchToolset()
 
 conf = LLMConf(
-    type="groq",
-    model=os.getenv("GROQ_MODEL_NAME"),
-    api_key=os.getenv("GROQ_API_KEY")
+    type="google",
+    model=os.getenv("GOOGLE_MODEL_NAME"),
+    api_key=os.getenv("GOOGLE_API_KEY")
 )
 
-model = get_litellm_model(conf)
+# model = get_litellm_model(conf)
 
 research_agent = Agent(
-    model=model,
+    model=conf.model,
     name='researcher_agent',
     tools=[research_toolset],
     description=(

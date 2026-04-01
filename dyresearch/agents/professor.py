@@ -12,15 +12,15 @@ teaching_toolset = TeachingToolset()
 load_dotenv("config.env")
 
 conf = LLMConf(
-    type="groq",
-    model=os.getenv("GROQ_MODEL_NAME"),
-    api_key=os.getenv("GROQ_API_KEY")
+    type="google",
+    model=os.getenv("GOOGLE_MODEL_NAME_2"),
+    api_key=os.getenv("GOOGLE_API_KEY")
 )
 
-model = get_litellm_model(conf)
+# model = get_litellm_model(conf)
 
 professor_agent = Agent(
-    model=model,
+    model=conf.model,
     name='professor_agent',
     description='The lead tutor and subject matter expert. Synthesizes answers and performs RAG.',
     instruction="You are the Professor, the lead educator of this system. Your mission is to provide clear, "

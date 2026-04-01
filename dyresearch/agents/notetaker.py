@@ -12,15 +12,15 @@ note_toolset = NoteTakingToolset()
 load_dotenv("config.env")
 
 conf = LLMConf(
-    type="groq",
-    model=os.getenv("GROQ_MODEL_NAME"),
-    api_key=os.getenv("GROQ_API_KEY")
+    type="google",
+    model=os.getenv("GOOGLE_MODEL_NAME_2"),
+    api_key=os.getenv("GOOGLE_API_KEY")
 )
 
-model = get_litellm_model(conf)
+# model = get_litellm_model(conf)
 
 note_taking_agent = Agent(
-    model=model,
+    model=conf.model,
     name='note_taking_agent',
     tools=[note_toolset],
     description=("Specialist in Markdown formatting and Obsidian Vault management. "

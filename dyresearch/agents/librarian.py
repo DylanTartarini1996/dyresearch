@@ -12,15 +12,15 @@ librarian_toolset = LibrarianToolset()
 load_dotenv("config.env")
 
 conf = LLMConf(
-    type="groq",
-    model=os.getenv("GROQ_MODEL_NAME"),
-    api_key=os.getenv("GROQ_API_KEY")
+    type="google",
+    model=os.getenv("GOOGLE_MODEL_NAME"),
+    api_key=os.getenv("GOOGLE_API_KEY")
 )
 
-model = get_litellm_model(conf)
+# model = get_litellm_model(conf)
 
 librarian_agent = Agent(
-    model=model,
+    model=conf.model,
     name='librarian_agent',
     tools=[librarian_toolset],
     description="The system's archivist. Manages ingestion, metadata, and database hygiene.",
