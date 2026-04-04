@@ -63,7 +63,7 @@ async def google_search(query: str) -> str:
     search_tool = types.Tool(google_search=types.GoogleSearch())
     # We make a direct call to Gemini to perform the search
     response = client.models.generate_content(
-        model=os.getenv("GOOGLE_MODEL_NAME_3"),
+        model=os.getenv("GOOGLE_MODEL_NAME"),
         contents=query,
         config=types.GenerateContentConfig(
             tools=[search_tool],

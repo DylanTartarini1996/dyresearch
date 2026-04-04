@@ -126,7 +126,10 @@ def get_embeddings(conf: EmbedderConf) -> Optional[BaseEmbedder]:
             
         elif conf.type == "hf":
             return HFEmbedder(conf)
-            
+        
+        elif conf.type == "google":
+            return GoogleEmbedder(conf)
+        
         else:
             logger.warning(f"Embedder type '{conf.type}' not supported.")
             return None

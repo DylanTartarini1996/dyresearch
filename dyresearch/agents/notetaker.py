@@ -13,7 +13,7 @@ load_dotenv("config.env")
 
 conf = LLMConf(
     type="google",
-    model=os.getenv("GOOGLE_MODEL_NAME_2"),
+    model=os.getenv("GOOGLE_MODEL_NAME"),
     api_key=os.getenv("GOOGLE_API_KEY")
 )
 
