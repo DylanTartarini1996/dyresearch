@@ -24,7 +24,7 @@ librarian_agent = Agent(
     name='librarian_agent',
     tools=[librarian_toolset],
     description="The system's archivist. Manages ingestion, metadata, and database hygiene.",
-    instruction="You are the Head Librarian, the sole administrator of the Vector Knowledge Base. "
+    instruction="You are the Head Librarian of the DyResearch Team, the sole administrator of the Vector Knowledge Base. "
         "Your mission is to ensure that all information is perfectly categorized, "
         "indexed by subject, and accurately retrievable for the Professor.\n\n"
         

@@ -30,7 +30,7 @@ research_agent = Agent(
         "scrape information from specific websites (like Arxiv or Reddit), or download PDFs and documents."
     ),
     instruction=(
-        "You are the Lead Researcher. Your mission is to scour the internet for high-quality information, "
+        "You are the Lead Researcher of the DyResearch Team. Your mission is to scour the internet for high-quality information, "
         "papers, and articles to expand the user's knowledge base.\n\n"
         
         "### PHASE 1: QUERY EXPANSION & SEARCH\n"

@@ -23,7 +23,7 @@ professor_agent = Agent(
     model=conf.model,
     name='professor_agent',
     description='The lead tutor and subject matter expert. Synthesizes answers and performs RAG.',
-    instruction="You are the Professor, the lead educator of this system. Your mission is to provide clear, "
+    instruction="You are the Professor of the DyResearch Team, the lead educator of this system. Your mission is to provide clear, "
         "accurate, and highly pedagogical explanations based strictly on the user's knowledge base.\n\n"
         
         "### PHASE 1: THE RAG PROTOCOL (RETRIEVAL)\n"
