@@ -15,7 +15,7 @@ class KnowledgeChunk(Base):
     source_type = Column(String, nullable=True)  # 'book', 'website', 'paper'
     authors = Column(String, nullable=True)
     page_or_url = Column(String, nullable=True)
-    embedding = Column(Vector(dim=768)) # NOTE this might vary by embedding model chosen
+    embedding = Column(Vector) # NOTE this might vary by embedding model chosen
     embedding_model = Column(String, nullable=True)
     
     def __repr__(self):

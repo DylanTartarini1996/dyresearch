@@ -204,13 +204,16 @@ async def search_knowledge_base(
                 folder_info = f" in the '{subject_filter}' index" if subject_filter != "" else ""
                 return f"I searched the library but found no relevant documents{folder_info}."
 
+            logger.info(f"Retrieved {len(chunks)} Chunks")
+
             # Format the response with clear citations 
             formatted_results = [f"### Relevant Passages (Index: {subject_filter or 'All'}):"]
             for i, chunk in enumerate(chunks, 1):
                 citation = f"Source: {chunk.source_title} | Authors: {chunk.authors}"
-                formatted_results.append(f"{i}. > {chunk.content}\n   *({citation})*")
+                formatted_results.append(f"{i}. > {chunk.text}\n   *({citation})*")
 
             return "\n\n".join(formatted_results)
 
     except Exception as e:
+        logger.warning(f"An error occured: {e}")
         return f"An error occurred during the search: {str(e)}"
