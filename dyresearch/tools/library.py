@@ -23,9 +23,9 @@ class LibrarianToolset(BaseToolset):
         
 
     async def get_tools(self, readonly_context: Optional[ReadonlyContext] = None) -> List[BaseTool]:
-        logger.info(f"LibrarianToolset.get_tools() called.")
+        logger.debug(f"LibrarianToolset.get_tools() called.")
         tools_to_return = [self._ingestion_tool, self._list_sources_tool, self._delete_tool, self._delete_by_subject_tool]
-        logger.info(f"LibrarianToolset providing tools: {[t.name for t in tools_to_return]}")
+        logger.debug(f"LibrarianToolset providing tools: {[t.name for t in tools_to_return]}")
         return tools_to_return
     
 
