@@ -60,3 +60,19 @@ Currently, what's missing is configuration to
 * visualize notes with Obsidian
 * access PostGRE via a DBMS like [DBvear](https://dbeaver.io/)
 
+
+## 🚧 PLUGIN CONSTRUCTION
+
+```
+cd <your-obsidian-vault>/.obsidian/plugins/dyresearch-sidecar
+
+# initialize node project
+npm init -y 
+
+# install deps
+npm install obsidian typescript tsup
+
+# compile
+npx tsup main.ts --format cjs --external obsidian
+
+```
