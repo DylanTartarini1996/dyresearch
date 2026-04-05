@@ -1,0 +1,39 @@
+.dy-chat-modal {
+    display: flex;
+    flex-direction: column;
+    height: 80vh;
+}
+
+.chat-history {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 10px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    margin-bottom: 15px;
+    background-color: var(--background-primary-alt);
+}
+
+.chat-msg-wrapper {
+    margin-bottom: 15px;
+}
+
+.chat-sender {
+    font-weight: bold;
+    display: block;
+    margin-bottom: 4px;
+    color: var(--text-accent);
+}
+
+.chat-msg-content {
+    background-color: var(--background-primary);
+    padding: 8px 12px;
+    border-radius: 6px;
+    line-height: 1.5;
+}
+
+.chat-input-container input {
+    width: 100%;
+    padding: 10px;
+    font-size: 1.1em;
+}
