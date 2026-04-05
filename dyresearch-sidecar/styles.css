@@ -1,0 +1,173 @@
+/* --- Modal Layout --- */
+.dy-chat-modal {
+    display: flex;
+    flex-direction: column;
+    height: 80vh;
+    max-height: 800px;
+}
+
+.chat-session-id {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: -10px;
+    margin-bottom: 20px;
+    font-family: var(--font-monospace);
+}
+
+/* --- Chat History Area --- */
+.chat-history {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 10px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    background-color: var(--background-primary-alt);
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+/* --- Message Bubbles --- */
+.chat-msg-wrapper {
+    display: flex;
+    flex-direction: column;
+}
+
+.chat-sender {
+    font-weight: bold;
+    font-size: 0.7rem;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-accent);
+}
+
+.chat-msg-content {
+    padding: 10px 14px;
+    border-radius: 12px;
+    background-color: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    line-height: 1.5;
+    max-width: 90%;
+}
+
+/* --- Input Area --- */
+.chat-input-container {
+    margin-top: 15px;
+    display: flex;
+    gap: 10px;
+}
+
+.chat-input-container input {
+    flex-grow: 1;
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid var(--background-modifier-border);
+    background-color: var(--background-primary);
+}
+
+/* --- History Sidebar View --- */
+.dy-history-container {
+    padding: 10px;
+}
+
+.history-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 15px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    margin-bottom: 15px;
+}
+
+.history-header h4 {
+    margin: 0;
+}
+
+/* --- New Chat Button --- */
+.dy-new-chat-btn {
+    background-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border: none;
+    border-radius: 5px;
+    padding: 4px 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s ease;
+}
+
+.dy-new-chat-btn:hover {
+    background-color: var(--interactive-accent-hover);
+}
+
+/* --- History List Items --- */
+.history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.history-item {
+    padding: 10px;
+    border-radius: 6px;
+    background-color: var(--background-secondary);
+    cursor: pointer;
+    transition: transform 0.1s ease, background-color 0.2s ease;
+    border: 1px solid transparent;
+}
+
+.history-item:hover {
+    background-color: var(--background-modifier-hover);
+}
+
+.history-item.is-active {
+    border-color: var(--interactive-accent);
+    background-color: var(--background-primary-alt);
+}
+
+.session-name {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-normal);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.history-item small {
+    display: block;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
+.history-empty {
+    text-align: center;
+    color: var(--text-muted);
+    font-style: italic;
+    margin-top: 20px;
+}
+
+.history-buttons {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.dy-close-sidebar-btn {
+    background: transparent;
+    color: var(--text-muted);
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    border-radius: 4px;
+}
+
+.dy-close-sidebar-btn:hover {
+    background-color: var(--background-modifier-hover);
+    color: var(--text-normal);
+}
