@@ -46,7 +46,8 @@ var HistoryView = class extends import_obsidian.ItemView {
     container.empty();
     const header = container.createDiv({ cls: "history-header" });
     header.createEl("h4", { text: "Research Sessions" });
-    const newChatBtn = header.createEl("button", {
+    const buttonContainer = header.createDiv({ cls: "history-buttons" });
+    const newChatBtn = buttonContainer.createEl("button", {
       cls: "dy-new-chat-btn",
       attr: { "aria-label": "New Session" }
     });
@@ -55,6 +56,14 @@ var HistoryView = class extends import_obsidian.ItemView {
       this.plugin.currentSessionId = `obsidian_${Date.now()}`;
       new ChatModal(this.app, this.plugin).open();
       this.refreshHistory();
+    });
+    const closeBtn = buttonContainer.createEl("button", {
+      cls: "dy-close-sidebar-btn",
+      attr: { "aria-label": "Close Sidebar" }
+    });
+    (0, import_obsidian.setIcon)(closeBtn, "x");
+    closeBtn.onClickEvent(() => {
+      this.app.workspace.rightSplit.collapse();
     });
     const list = container.createDiv({ cls: "history-list" });
     try {

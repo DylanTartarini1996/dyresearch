@@ -149,3 +149,25 @@
     font-style: italic;
     margin-top: 20px;
 }
+
+.history-buttons {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.dy-close-sidebar-btn {
+    background: transparent;
+    color: var(--text-muted);
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    border-radius: 4px;
+}
+
+.dy-close-sidebar-btn:hover {
+    background-color: var(--background-modifier-hover);
+    color: var(--text-normal);
+}

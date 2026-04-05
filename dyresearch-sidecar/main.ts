@@ -30,17 +30,27 @@ export class HistoryView extends ItemView {
         // --- Header with New Chat Button ---
         const header = container.createDiv({ cls: 'history-header' });
         header.createEl("h4", { text: "Research Sessions" });
+        
+        const buttonContainer = header.createDiv({ cls: 'history-buttons' });
 
-        const newChatBtn = header.createEl("button", { 
+        const newChatBtn = buttonContainer.createEl("button", { 
             cls: 'dy-new-chat-btn',
             attr: { "aria-label": "New Session" } 
         });
         setIcon(newChatBtn, 'plus');
-
         newChatBtn.onClickEvent(() => {
             this.plugin.currentSessionId = `obsidian_${Date.now()}`;
             new ChatModal(this.app, this.plugin).open();
             this.refreshHistory();
+        });
+
+        const closeBtn = buttonContainer.createEl("button", { 
+            cls: 'dy-close-sidebar-btn',
+            attr: { "aria-label": "Close Sidebar" } 
+        });
+        setIcon(closeBtn, 'x'); // Uses Obsidian's native 'x' icon
+        closeBtn.onClickEvent(() => {
+            this.app.workspace.rightSplit.collapse();
         });
 
         // --- Session List ---
