@@ -1,4 +1,4 @@
-import { App, Plugin, Modal, MarkdownRenderer, ItemView, WorkspaceLeaf, setIcon } from 'obsidian';
+import { App, Plugin, Modal, MarkdownRenderer, ItemView, WorkspaceLeaf, setIcon, Notice } from 'obsidian';
 
 export const VIEW_TYPE_HISTORY = "dyresearch-history-view";
 
@@ -77,6 +77,91 @@ export class HistoryView extends ItemView {
         } catch (err) {
             list.createEl("p", { text: "Failed to load history." });
         }
+
+        // -------- UPLOAD CONTAINER ---------
+        const uploadContainer = container.createDiv({ cls: 'upload-section' });
+        uploadContainer.createEl("h4", { text: "Upload File(s) to Library" });
+        const metadataForm = uploadContainer.createDiv({ cls: 'metadata-form' });
+
+        const subjectInput = metadataForm.createEl("input", { 
+            type: "text", 
+            placeholder: "Subject (e.g. Quantum Computing)..." 
+        });
+        const authorsInput = metadataForm.createEl("input", { 
+            type: "text", 
+            placeholder: "Authors (e.g. John Doe)..." 
+        });
+        const typeSelect = metadataForm.createEl("select");
+        typeSelect.add(new Option("Research Paper", "paper"));
+        typeSelect.add(new Option("Book / Chapter", "book"));
+        typeSelect.add(new Option("Personal Notes", "notes"));
+        
+        // --- Create File Input & Button ---
+        const fileInput = uploadContainer.createEl("input", {
+            attr: { type: "file", multiple: "true", accept: ".pdf,.md,.docx,.txt" },
+            cls: "hidden-file-input"
+        });
+
+        const uploadBtn = uploadContainer.createEl("button", { 
+            text: "📁 Select & Upload Docs",
+            cls: "dy-upload-btn" 
+        });
+
+        uploadBtn.onClickEvent(() => fileInput.click());
+        
+        // ---  Handle the Upload ---
+        fileInput.addEventListener("change", async () => {
+            if (!fileInput.files || fileInput.files.length === 0) return;
+            
+            const formData = new FormData();
+            
+            // Append the files
+            for (let i = 0; i < fileInput.files.length; i++) {
+                formData.append("files", fileInput.files[i]);
+            }
+
+            // Append the metadata fields
+            // We use fallback values in case the user leaves them blank
+            formData.append("subject", subjectInput.value.trim() || "General");
+            formData.append("authors", authorsInput.value.trim() || "Unknown");
+            formData.append("source_type", typeSelect.value);
+            
+            // Pass any extra data as a JSON string
+            formData.append("metadata_json", JSON.stringify({ 
+                uploaded_via: "obsidian_ui",
+                batch_id: Date.now() 
+            }));
+
+            // Update UI State
+            uploadBtn.setText("⏳ Ingesting...");
+            uploadBtn.disabled = true;
+
+            try {
+                const response = await fetch("http://localhost:8000/ingest", {
+                    method: "POST",
+                    body: formData // The browser automatically sets the correct multipart headers
+                });
+                
+                if (!response.ok) throw new Error("Server rejected the upload");
+                
+                const result = await response.json();
+                const successCount = result.results.filter((r: any) => r.status === "success").length;
+                
+                new Notice(`Successfully ingested ${successCount} files!`);
+                
+                // Optional: Clear the form inputs after successful upload
+                subjectInput.value = "";
+                authorsInput.value = "";
+                
+            } catch (err) {
+                console.error(err);
+                new Notice("Failed to upload documents. Check console for details.");
+            } finally {
+                uploadBtn.setText("📁 Select & Upload Docs");
+                uploadBtn.disabled = false;
+                fileInput.value = "";
+            }
+        });
     }
 }
 
