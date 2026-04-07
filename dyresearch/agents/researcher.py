@@ -3,6 +3,7 @@ import os
 from dotenv import load_dotenv
 from google.adk.agents.llm_agent import Agent
 
+from ..callbacks.documents import upload_file_callback
 from ..config import LLMConf
 from ..factory.llm_providers import get_litellm_model
 from ..tools.search import ResearchToolset
@@ -30,7 +31,7 @@ research_agent = Agent(
         "scrape information from specific websites (like Arxiv or Reddit), or download PDFs and documents."
     ),
     instruction=(
-        "You are the Lead Researcher. Your mission is to scour the internet for high-quality information, "
+        "You are the Lead Researcher of the DyResearch Team. Your mission is to scour the internet for high-quality information, "
         "papers, and articles to expand the user's knowledge base.\n\n"
         
         "### PHASE 1: QUERY EXPANSION & SEARCH\n"
@@ -48,3 +49,5 @@ research_agent = Agent(
         "ALWAYS include the source URLs."
     )
 )
+
+research_agent.after_tool_callback = upload_file_callback

@@ -20,9 +20,9 @@ class TeachingToolset(BaseToolset):
 
 
     async def get_tools(self, readonly_context: Optional[ReadonlyContext] = None) -> List[BaseTool]:
-        logger.info(f"TeachingToolset.get_tools() called.")
+        logger.debug(f"TeachingToolset.get_tools() called.")
         tools_to_return = [self._search_kb_tool]
-        logger.info(f"TeachingToolset providing tools: {[t.name for t in tools_to_return]}")
+        logger.debug(f"TeachingToolset providing tools: {[t.name for t in tools_to_return]}")
         return tools_to_return
     
 

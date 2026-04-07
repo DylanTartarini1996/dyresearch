@@ -1,3 +1,5 @@
+*obsidian
+*node_modules/
 *.venv/
 *.adk/
 *.vscode/

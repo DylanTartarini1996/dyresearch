@@ -1,6 +1,6 @@
 # 📚 dyresearch
 
-> March, 2026
+> April, 2026
 
 Multi-Agent system able to help studying, learning and researching topics. 
 
@@ -32,10 +32,15 @@ Is responsible to digest complex information into useful notes that could be ren
 
 ## 📍Run Locally
 
+to run the Coordinator Agent directly, with PostGRE SQL as memory service:
 ````
 uv run adk web --session_service_uri postgresql+asyncpg://adk_user:adk_password@localhost:5432/adk_history
 ````
 
+to run the FastAPI server:
+```
+uv run uvicorn app.server:app --host 127.0.0.1 --port 8000 --reload
+```
 
 ## 🐳 Run with Docker Compose
 
@@ -55,3 +60,19 @@ Currently, what's missing is configuration to
 * visualize notes with Obsidian
 * access PostGRE via a DBMS like [DBvear](https://dbeaver.io/)
 
+
+## 🚧 PLUGIN CONSTRUCTION
+
+```
+cd <your-obsidian-vault>/.obsidian/plugins/dyresearch-sidecar
+
+# initialize node project
+npm init -y 
+
+# install deps
+npm install obsidian typescript tsup
+
+# compile
+npx tsup main.ts --format cjs --external obsidian
+
+```

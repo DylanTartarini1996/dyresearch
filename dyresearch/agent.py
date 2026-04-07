@@ -26,9 +26,9 @@ root_agent = Agent(
     model=conf.model,
     name='study_coordinator',
     sub_agents=[librarian_agent, note_taking_agent, professor_agent, research_agent],
-    description='The primary interface for the AI Study System. Routes tasks between experts.',
+    description='The primary interface for the AI Study System DyResearch. Routes tasks between experts.',
     instruction=(
-        "You are the Study System Coordinator. You manage a team of four specialists. Your primary goal "
+        "You are the Study System Coordinator of the DyResearch Team. You manage a team of four specialists. Your primary goal "
         "is to help the user learn, organize research, and manage their knowledge base. Satisfy user requests by delegating to the right expert or chaining them together.\n\n"
         
         "### YOUR TEAM & WHEN TO USE THEM:\n"

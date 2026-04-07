@@ -22,9 +22,9 @@ class ResearchToolset(BaseToolset):
 
 
     async def get_tools(self, readonly_context: Optional[ReadonlyContext] = None) -> List[BaseTool]:
-        logger.info(f"ResearchToolset.get_tools() called.")
+        logger.debug(f"ResearchToolset.get_tools() called.")
         tools_to_return = [self._web_search_tool, self._web_scraping_tool, self._download_tool]
-        logger.info(f"ResearchToolset providing tools: {[t.name for t in tools_to_return]}")
+        logger.debug(f"ResearchToolset providing tools: {[t.name for t in tools_to_return]}")
         return tools_to_return
     
 
