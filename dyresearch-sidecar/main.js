@@ -84,6 +84,66 @@ var HistoryView = class extends import_obsidian.ItemView {
     } catch (err) {
       list.createEl("p", { text: "Failed to load history." });
     }
+    const uploadContainer = container.createDiv({ cls: "upload-section" });
+    uploadContainer.createEl("h4", { text: "Upload File(s) to Library" });
+    const metadataForm = uploadContainer.createDiv({ cls: "metadata-form" });
+    const subjectInput = metadataForm.createEl("input", {
+      type: "text",
+      placeholder: "Subject (e.g. Quantum Computing)..."
+    });
+    const authorsInput = metadataForm.createEl("input", {
+      type: "text",
+      placeholder: "Authors (e.g. John Doe)..."
+    });
+    const typeSelect = metadataForm.createEl("select");
+    typeSelect.add(new Option("Research Paper", "paper"));
+    typeSelect.add(new Option("Book / Chapter", "book"));
+    typeSelect.add(new Option("Personal Notes", "notes"));
+    const fileInput = uploadContainer.createEl("input", {
+      attr: { type: "file", multiple: "true", accept: ".pdf,.md,.docx,.txt" },
+      cls: "hidden-file-input"
+    });
+    const uploadBtn = uploadContainer.createEl("button", {
+      text: "\u{1F4C1} Select & Upload Docs",
+      cls: "dy-upload-btn"
+    });
+    uploadBtn.onClickEvent(() => fileInput.click());
+    fileInput.addEventListener("change", async () => {
+      if (!fileInput.files || fileInput.files.length === 0) return;
+      const formData = new FormData();
+      for (let i = 0; i < fileInput.files.length; i++) {
+        formData.append("files", fileInput.files[i]);
+      }
+      formData.append("subject", subjectInput.value.trim() || "General");
+      formData.append("authors", authorsInput.value.trim() || "Unknown");
+      formData.append("source_type", typeSelect.value);
+      formData.append("metadata_json", JSON.stringify({
+        uploaded_via: "obsidian_ui",
+        batch_id: Date.now()
+      }));
+      uploadBtn.setText("\u23F3 Ingesting...");
+      uploadBtn.disabled = true;
+      try {
+        const response = await fetch("http://localhost:8000/ingest", {
+          method: "POST",
+          body: formData
+          // The browser automatically sets the correct multipart headers
+        });
+        if (!response.ok) throw new Error("Server rejected the upload");
+        const result = await response.json();
+        const successCount = result.results.filter((r) => r.status === "success").length;
+        new import_obsidian.Notice(`Successfully ingested ${successCount} files!`);
+        subjectInput.value = "";
+        authorsInput.value = "";
+      } catch (err) {
+        console.error(err);
+        new import_obsidian.Notice("Failed to upload documents. Check console for details.");
+      } finally {
+        uploadBtn.setText("\u{1F4C1} Select & Upload Docs");
+        uploadBtn.disabled = false;
+        fileInput.value = "";
+      }
+    });
   }
 };
 var DyResearchPlugin = class extends import_obsidian.Plugin {

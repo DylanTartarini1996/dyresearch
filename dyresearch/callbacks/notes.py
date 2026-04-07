@@ -3,7 +3,7 @@ from typing import Any, Dict
 from google.adk.tools import BaseTool
 from google.adk.tools.tool_context import ToolContext
 
-from ..tools.knowledge_base.vector_store import delete_source, ingest_source
+from ..tools.knowledge_base.vector_store import delete_source, ingest_source_chunks
 from ..utils.logger import get_logger
 
 
@@ -27,8 +27,8 @@ async def internal_sync_obsidian_note(title: str, content: str, folder: str):
         for i in range(0, len(content), chunk_size - overlap)
     ]
 
-    # 3. Use your existing ingestion logic
-    result = await ingest_source(
+    # Use the existing ingestion logic
+    result = await ingest_source_chunks(
         content_chunks=content_chunks,
         subject=folder if folder else "Notes",
         title=title,
@@ -40,10 +40,10 @@ async def internal_sync_obsidian_note(title: str, content: str, folder: str):
 
 
 async def sync_note_to_library_callback(
-        tool: BaseTool, 
-        args: Dict[str, Any], 
-        tool_response: str,
-        tool_context: ToolContext 
+    tool: BaseTool, 
+    args: Dict[str, Any], 
+    tool_response: str,
+    tool_context: ToolContext 
     ):
     """
     Programmatic hook: Automatically indexes notes after the 
@@ -51,17 +51,14 @@ async def sync_note_to_library_callback(
     from vector store if the agent deleted said note. 
     """
 
-    # Check if the tool executed was note creation or appending
     if tool.name in ["notes_create_obsidian_note", "notes_update_obsidian_note"]:    
-        # Extract arguments from the trace structure you provided
         title = args.get("title")
         content = args.get("content")
-        folder = args.get("folder", "General") # NOTE this should be mapped into metadata from KnowledgeChunk
-        # Skip if the tool reported an error
+        folder = args.get("folder", "General")
         if isinstance(tool_response, str) and tool_response.startswith("❌"):
             logger.warning(f"⚠️ Sync skipped: Tool reported failure for {title}")
             return
-        # Perform the background ingestion
+        
         logger.info(f"🔄 [System Hook] Automatically indexing '{title}' into '{folder}'...")
         try:
             status = await internal_sync_obsidian_note(

@@ -1,8 +1,9 @@
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from google.adk.tools.tool_context import ToolContext
 from sqlalchemy import select, delete
 
+from .ingestion import ingest_and_chunk_file
 from ...entities.knowledge_chunk import KnowledgeChunk
 from ...factory.database import db_config, get_db_context
 from ...factory.embeddings import BaseEmbedder, embedder_conf, get_embeddings
@@ -12,12 +13,13 @@ from ...utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-async def ingest_source(
+async def ingest_source_chunks(
     content_chunks: List[str], 
     subject: str="General",
     title: str=None, 
     source_type: str=None, 
     authors: str = None, 
+    metadatas: Optional[Dict] = None,
     tool_context: ToolContext = None
     ) -> str:
     """
@@ -34,45 +36,126 @@ async def ingest_source(
         Title of the source (book/website).
     - `source_type`: `str` 
         Category (e.g., 'textbook', 'research_paper').
-    - `author`: `str`
-        Author name if known.
+    - `authors`: `str`
+        Author(s) name(s) if known.
+    - `metadatas`: `Optional[Dict]`
+        Optional dictionary of metadata associated with the source
     """
     chunks_saved = 0
 
     if not content_chunks:
-        return "Error: No content chunks provided for ingestion."
+        error_no_chunks = "❌ Error: No content chunks provided for ingestion."
+        logger.error(error_no_chunks)
+        return error_no_chunks
     
     embedder: BaseEmbedder = get_embeddings(embedder_conf)
 
     if not embedder:
-        return "Error: Embedder not configured correctly."
+        error_no_embedder = "❌ Error: No content Embeddings model available."
+        logger.error(error_no_embedder)
+        return error_no_embedder
     
+    total_chunks = len(content_chunks)
+    batch_size = 15  # Manageable size for both embeddings and DB commits
+    chunks_saved = 0
+
     try:
-        all_vectors = await embedder.embed_documents(content_chunks)
-        
+        logger.info(f"🚀 Starting ingestion for '{title}' ({total_chunks} chunks)")
+
+        # Open the session once for the entire process
         async with get_db_context(db_config) as session:
-            for chunk_text, vector in zip(content_chunks, all_vectors):
-                
-                new_chunk = KnowledgeChunk(
-                    text=chunk_text,
-                    source_title=title,
-                    source_type=source_type,
-                    authors=authors,
-                    embedding=vector,
-                    subject=subject.lower(),
-                    embedding_model=embedder.model
-                )
-                
-                session.add(new_chunk)
-                chunks_saved += 1
-                
-            await session.commit()
             
-        return f"Successfully ingested '{title}' - ({chunks_saved} chunks indexed) into the {subject} index."
+            for i in range(0, total_chunks, batch_size):
+                batch_text = content_chunks[i : i + batch_size]
+                
+                # 1. Batch Embedding
+                logger.info(f"📡 Embedding batch {i//batch_size + 1}...")
+                batch_vectors = await embedder.embed_documents(batch_text)
+                
+                # 2. Prepare Objects for this batch
+                for j, (text, vector) in enumerate(zip(batch_text, batch_vectors)):
+                    current_idx = i + j + 1
+                    new_chunk = KnowledgeChunk(
+                        text=text,
+                        source_title=title,
+                        chunk_id=current_idx, 
+                        source_type=source_type,
+                        authors=authors,
+                        embedding=vector,
+                        subject=subject.lower(),
+                        embedding_model=embedder.model,
+                        metadatas=metadatas
+                    )
+                    session.add(new_chunk)
+                
+                # 3. Intermediate Commit (Flush to DB)
+                logger.info(f"💾 Committing batch {i//batch_size + 1} to Postgres...")
+                await session.commit() 
+                chunks_saved += len(batch_text)
+
+        success_msg = f"✅ Ingestion Complete: '{title}' - {chunks_saved}/{total_chunks} chunks indexed."
+        logger.info(success_msg)    
+        return success_msg
     
     except Exception as e:
+        logger.error(f"❌ Ingestion failed at chunk {chunks_saved}: {e}")
         return f"Ingestion failed: {str(e)}"
     
+
+async def ingest_source_file(
+    file_path: str, 
+    title: str, 
+    subject: str="General",
+    source_type: str=None, 
+    authors: str = None, 
+    metadatas: Optional[Dict] = None,
+    tool_context: ToolContext = None
+    ): 
+    """ 
+    Ingest a source file from a given filepath available in the study system into the vector store. 
+    
+    -------
+    Params:
+    -------
+    `file_path`: `str`
+        Path of the source file to be ingested
+    `source_name`: `str`:
+        Title of the file
+    - `subject`: `str`
+        Subject of the file. Will be used to index its chunks into common subject folder with other available chunks
+    - `title`: `str`
+        Title of the source (book/website).
+    - `source_type`: `str` 
+        Category (e.g., 'textbook', 'research_paper').
+    - `authors`: `str`
+        Author(s) name(s) if known.
+    - `metadatas`: `Optional[Dict]`
+        Optional dictionary of metadata associated with the source
+    """
+    logger.debug(f"Ingesting from filepath {file_path}..")
+
+    try:
+        chunks = await ingest_and_chunk_file(file_path=file_path, source_name=title)
+
+        file_metadata = {
+            "filename": title,
+            **metadatas
+        }
+        
+        ingestion_msg = await ingest_source_chunks(
+            content_chunks=chunks, 
+            subject=subject,
+            title=title,
+            source_type=source_type,
+            authors=authors,
+            metadatas=file_metadata
+        )
+
+        return ingestion_msg
+
+    except Exception as e:
+        return f"Ingestion failed: {str(e)}"
+
 
 async def list_available_sources(tool_context: ToolContext = None) -> str:
     """

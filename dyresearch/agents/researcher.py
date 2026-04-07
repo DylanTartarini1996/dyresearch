@@ -3,6 +3,7 @@ import os
 from dotenv import load_dotenv
 from google.adk.agents.llm_agent import Agent
 
+from ..callbacks.documents import upload_file_callback
 from ..config import LLMConf
 from ..factory.llm_providers import get_litellm_model
 from ..tools.search import ResearchToolset
@@ -48,3 +49,5 @@ research_agent = Agent(
         "ALWAYS include the source URLs."
     )
 )
+
+research_agent.after_tool_callback = upload_file_callback
