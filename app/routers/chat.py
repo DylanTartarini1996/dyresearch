@@ -72,14 +72,20 @@ async def chat(chat_request: ChatRequest) -> ChatResponse:
                 
                 for part in parts:
                     text_chunk = None
+                    is_thought = False
                     
-                    # THE FIX: Handle both Dictionary and Object formats
+                    # Handle both Dictionary and Object formats
                     if isinstance(part, dict):
                         text_chunk = part.get("text")
+                        # Check if this part is flagged as a thought
+                        is_thought = part.get("thought", False) 
                     elif hasattr(part, "text"):
                         text_chunk = part.text
+                        # LiteLLM/ADK usually sets this attribute on the Part object
+                        is_thought = getattr(part, "thought", False)
 
-                    if text_chunk:
+                    # ONLY append if it's not a thought
+                    if text_chunk and not is_thought:
                         final_response.append(text_chunk)
         
         full_text = "".join(final_response).strip()
@@ -144,11 +150,18 @@ async def get_session_messages(session_id: str):
                     role = "👤 You" if event.author == "user" else "🤖 AI"
                     parts = getattr(event.content, "parts", [])
                     
-                    # THE FIX: Only join parts that actually contain a string
                     text_parts = []
+
                     for p in parts:
-                        val = getattr(p, 'text', None)
-                        if isinstance(val, str):
+                        is_thought = False
+                        if isinstance(p, dict):
+                            val = getattr(p, 'text', None)
+                            is_thought = getattr(p, "thought", False)
+                        elif hasattr(p, "text"):
+                            val = p.text
+                            # LiteLLM/ADK usually sets this attribute on the Part object
+                            is_thought = getattr(p, "thought", False)
+                        if isinstance(val, str) and not is_thought:
                             text_parts.append(val)
                     
                     full_text = "".join(text_parts).strip()
