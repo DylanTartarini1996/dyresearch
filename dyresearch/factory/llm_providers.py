@@ -14,7 +14,7 @@ def get_litellm_model(conf: LLMConf) -> LiteLlm:
     if conf.type == ModelType.AZURE_OPENAI:
         model=f"azure/{conf.model}"
     elif conf.type == ModelType.OLLAMA:
-        model=f"ollama/{conf.model}"
+        model=f"ollama_chat/{conf.model}"
     elif conf.type == ModelType.HF:
         model=f"huggingface/{conf.model}"
     elif conf.type == ModelType.GOOGLE:
@@ -31,7 +31,13 @@ def get_litellm_model(conf: LLMConf) -> LiteLlm:
             api_key=conf.api_key,
             api_base=conf.endpoint,
             api_version=conf.api_version,
-        )
+            extra_body={
+                    "chat_template_kwargs": {
+                        "enable_thinking": True # Enable thinking
+                    },
+                    "skip_special_tokens": False # Should be set to False
+                }
+            )
 
         logger.info(f"✅ Initialized LiteLLM with model type: {conf.type}")
 
