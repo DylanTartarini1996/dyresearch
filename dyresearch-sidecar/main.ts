@@ -12,6 +12,15 @@ interface SessionInfo {
 }
 
 export class HistoryView extends ItemView {
+    // State to track which tab is active
+    private activeTab: 'chats' | 'library' = 'chats';
+    // Library state
+    private libraryOffset = 0;
+    private readonly libraryLimit = 20;
+    // Chat state
+    private chatOffset = 0;
+    private readonly chatLimit = 10;
+
     constructor(leaf: WorkspaceLeaf, private plugin: DyResearchPlugin) {
         super(leaf);
     }
@@ -20,19 +29,40 @@ export class HistoryView extends ItemView {
     getDisplayText() { return "DyResearch History"; }
 
     async onOpen() {
-        this.refreshHistory();
+        this.refreshView();
     }
 
-    async refreshHistory() {
+    async refreshView() {
         const container = this.containerEl.children[1];
         container.empty();
+
+        // --- Tab Navigation ---
+        const navContainer = container.createDiv({ cls: 'dy-nav-tabs' });
         
+        const chatsTab = navContainer.createEl('button', { text: '💬 Chats', cls: 'dy-tab-btn' });
+        const libTab = navContainer.createEl('button', { text: '📚 Library', cls: 'dy-tab-btn' });
+
+        if (this.activeTab === 'chats') chatsTab.addClass('is-active-tab');
+        if (this.activeTab === 'library') libTab.addClass('is-active-tab');
+
+        chatsTab.onClickEvent(() => { this.activeTab = 'chats'; this.refreshView(); });
+        libTab.onClickEvent(() => { this.activeTab = 'library'; this.refreshView(); });
+        
+        // --- Render Active Tab Content ---
+        if (this.activeTab === 'chats') {
+            await this.renderChatsTab(container);
+        } else {
+            await this.renderLibraryTab(container);
+        }
+    }
+
+
+    async renderChatsTab(container: HTMLElement) {
         // --- Header with New Chat Button ---
         const header = container.createDiv({ cls: 'history-header' });
         header.createEl("h4", { text: "Research Sessions" });
-        
-        const buttonContainer = header.createDiv({ cls: 'history-buttons' });
 
+        const buttonContainer = header.createDiv({ cls: 'history-buttons' });
         const newChatBtn = buttonContainer.createEl("button", { 
             cls: 'dy-new-chat-btn',
             attr: { "aria-label": "New Session" } 
@@ -41,7 +71,7 @@ export class HistoryView extends ItemView {
         newChatBtn.onClickEvent(() => {
             this.plugin.currentSessionId = `obsidian_${Date.now()}`;
             new ChatModal(this.app, this.plugin).open();
-            this.refreshHistory();
+            this.refreshView();
         });
 
         const closeBtn = buttonContainer.createEl("button", { 
@@ -53,31 +83,130 @@ export class HistoryView extends ItemView {
             this.app.workspace.rightSplit.collapse();
         });
 
-        // --- Session List ---
+        // Session List Container
         const list = container.createDiv({ cls: "history-list" });
+        const footer = container.createDiv({ cls: "history-footer" });
+        this.chatOffset = 0; // Reset offset for fresh tab load
 
-        try {
-            const response = await fetch(`http://localhost:8000/history/${this.plugin.userId}`);
-            const history: SessionInfo[] = await response.json();
+        // Loading Logic for chats
+        const loadChats = async () => {
+            const loadingText = list.createEl("p", { text: "Loading sessions...", cls: "loading-text" });
 
-            history.forEach(item => {
-                const sessionEl = list.createDiv({ cls: "history-item" });
-                if (item.session_id === this.plugin.currentSessionId) sessionEl.addClass('is-active');
+            try {
+                const url = `http://localhost:8000/history/${this.plugin.userId}?limit=${this.chatLimit}&offset=${this.chatOffset}`;
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                loadingText.remove();
 
-                const date = new Date(item.last_updated).toLocaleDateString();
-                sessionEl.createEl("div", { text: item.session_id, cls: "session-name" });
-                sessionEl.createEl("small", { text: `Last activity: ${date}` });
+                data.sessions.forEach((item: any) => {
+                    const sessionEl = list.createDiv({ cls: "history-item" });
+                    if (item.session_id === this.plugin.currentSessionId) sessionEl.addClass('is-active');
 
-                sessionEl.onClickEvent(() => {
-                    this.plugin.currentSessionId = item.session_id;
-                    new ChatModal(this.app, this.plugin).open();
-                    this.refreshHistory();
+                    // Container for the name and the edit button
+                    const titleContainer = sessionEl.createDiv({ cls: "session-title-container" });
+                    const nameEl = titleContainer.createEl("div", { text: item.session_id, cls: "session-name" });
+                    
+                    const editBtn = titleContainer.createEl("button", { cls: "dy-edit-btn", attr: { "aria-label": "Rename Session" } });
+                    setIcon(editBtn, 'pencil');
+
+                    const date = new Date(item.last_updated).toLocaleDateString();
+                    //sessionEl.createEl("div", { text: item.session_id, cls: "session-name" });
+                    sessionEl.createEl("small", { text: `Last activity: ${date}` });
+                    // Open chat on click (make sure we don't trigger this when clicking the edit button)
+                    sessionEl.onClickEvent((e) => {
+                        // Prevent opening if the user is currently typing in the input box
+                        if ((e.target as HTMLElement).tagName === 'INPUT') return;
+                        this.plugin.currentSessionId = item.session_id;
+                        new ChatModal(this.app, this.plugin).open();
+                        this.refreshView();
+                    });
+
+                    // Handle the Edit Button Click
+                    editBtn.onClickEvent((e) => {
+                        e.stopPropagation(); // Stop the sessionEl click event from firing
+                        // Turn text into an input field
+                        nameEl.empty();
+                        const inputField = nameEl.createEl("input", { 
+                            type: "text", 
+                            value: item.session_id,
+                            cls: "session-rename-input"
+                        });
+                        editBtn.style.display = 'none'; // Hide pencil while editing
+                        inputField.focus();
+
+                        // 4. Save on Enter
+                        inputField.addEventListener('keydown', async (keyEvent: KeyboardEvent) => {
+                            if (keyEvent.key === 'Enter') {
+                                const newId = inputField.value.trim();
+                                
+                                // If unchanged or empty, revert UI
+                                if (!newId || newId === item.session_id) {
+                                    nameEl.setText(item.session_id);
+                                    editBtn.style.display = 'flex';
+                                    return;
+                                }
+
+                                inputField.disabled = true; // prevent double submission
+
+                                try {
+                                    const response = await fetch(`http://localhost:8000/sessions/${item.session_id}/rename`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ 
+                                            new_session_id: newId,
+                                            user_id: this.plugin.userId 
+                                        })
+                                    });
+
+                                    if (!response.ok) throw new Error("Rename failed");
+
+                                    // If they renamed the currently active chat, update the plugin state
+                                    if (this.plugin.currentSessionId === item.session_id) {
+                                        this.plugin.currentSessionId = newId;
+                                    }
+
+                                    // Reload the UI to reflect changes
+                                    this.refreshView();
+                                    new Notice("Session renamed successfully.");
+
+                                } catch (err) {
+                                    new Notice("Failed to rename session.");
+                                    nameEl.setText(item.session_id); // Revert on failure
+                                    editBtn.style.display = 'flex';
+                                }
+                            }
+                            // Optional: Revert on Escape key
+                            if (keyEvent.key === 'Escape') {
+                                nameEl.setText(item.session_id);
+                                editBtn.style.display = 'flex';
+                            }
+                        });
+                    });
                 });
-            });
-        } catch (err) {
-            list.createEl("p", { text: "Failed to load history." });
-        }
+                
+                this.chatOffset += data.sessions.length;
+                // Handle "Load More" Button
+                footer.empty();
+                if (this.chatOffset < data.total) {
+                    const loadMoreBtn = footer.createEl("button", { 
+                        text: "Load Older Chats", 
+                        cls: "dy-load-more-btn" 
+                    });
+                    loadMoreBtn.onClickEvent(() => loadChats());
+                } else if (data.total > 0) {
+                    footer.createEl("p", { text: "End of history", cls: "text-muted" });
+                }
 
+            } catch (err) {
+                loadingText.setText("Failed to load history.");
+            }
+        };
+
+        await loadChats();
+    }
+
+    async renderUploadSection(container: HTMLElement){
         // -------- UPLOAD CONTAINER ---------
         const uploadContainer = container.createDiv({ cls: 'upload-section' });
         uploadContainer.createEl("h4", { text: "Upload File(s) to Library" });
@@ -94,7 +223,7 @@ export class HistoryView extends ItemView {
         const typeSelect = metadataForm.createEl("select");
         typeSelect.add(new Option("Research Paper", "paper"));
         typeSelect.add(new Option("Book / Chapter", "book"));
-        typeSelect.add(new Option("Personal Notes", "notes"));
+        typeSelect.add(new Option("Manual", "manual"));
         
         // --- Create File Input & Button ---
         const fileInput = uploadContainer.createEl("input", {
@@ -162,6 +291,70 @@ export class HistoryView extends ItemView {
                 fileInput.value = "";
             }
         });
+    }
+
+    async renderLibraryTab(container: HTMLElement){
+        // Render the Upload form at the top
+        await this.renderUploadSection(container);
+
+        // Add a separator
+        container.createEl("hr", { cls: "library-divider" });
+
+        const libContainer = container.createDiv({ cls: 'library-container' });
+        libContainer.createEl("h4", { text: "Files in Library" });
+
+        const list = libContainer.createDiv({ cls: "library-list" });
+        const footer = libContainer.createDiv({ cls: "library-footer" });
+
+        // Reset offset when opening the tab fresh
+        this.libraryOffset = 0;
+
+        const loadDocs = async () => {
+            const loadingNotice = list.createEl("p", { text: "Loading...", cls: "loading-text" });
+            
+            try {
+                const url = `http://localhost:8000/library?limit=${this.libraryLimit}&offset=${this.libraryOffset}`;
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                loadingNotice.remove();
+
+                // Render each document card
+                data.documents.forEach((doc: any) => {
+                    const card = list.createDiv({ cls: "library-card" });
+                    const header = card.createDiv({ cls: "library-card-header" });
+                    header.createEl("strong", { text: doc.title });
+                    header.createEl("span", { text: doc.type, cls: "badge-type" });
+                    
+                    card.createEl("div", { text: `👤 ${doc.authors}`, cls: "library-meta" });
+                    card.createEl("div", { text: `🏷️ ${doc.subject}`, cls: "library-meta" });
+                    card.createEl("div", { text: `🧩 ${doc.chunks} chunks indexed`, cls: "library-meta chunks-info" });
+                });
+
+                // Update state for the next batch
+                this.libraryOffset += data.documents.length;
+
+                // 3. Handle the "Load More" Button Visibility
+                footer.empty(); // Clear old button
+                if (this.libraryOffset < data.total) {
+                    const loadMoreBtn = footer.createEl("button", { 
+                        text: "Load More", 
+                        cls: "dy-load-more-btn" 
+                    });
+                    loadMoreBtn.onClickEvent(() => loadDocs());
+                } else if (data.total > 0) {
+                    footer.createEl("p", { text: "All documents loaded.", cls: "text-muted" });
+                } else {
+                    list.createEl("p", { text: "No documents found.", cls: "text-muted" });
+                }
+
+            } catch (err) {
+                loadingNotice.setText("❌ Error loading library.");
+            }
+        };
+
+        // Initial load
+        await loadDocs();
     }
 }
 
@@ -260,7 +453,7 @@ class ChatModal extends Modal {
 
                     // Refresh history sidebar to update timestamps
                     const historyView = this.app.workspace.getLeavesOfType(VIEW_TYPE_HISTORY)[0]?.view as HistoryView;
-                    if (historyView) historyView.refreshHistory();
+                    if (historyView) historyView.refreshView();
 
                 } catch (err) {
                     aiMsgDiv.setText('❌ Error: Could not reach Python sidecar.');
