@@ -5,12 +5,13 @@ from fastapi import APIRouter, HTTPException
 from google.genai import types
 from google.adk.runners import Runner
 from google.adk.sessions.database_session_service import DatabaseSessionService
-from typing import List
 
 from app.models.request_chat import ChatRequest
+from app.models.request_rename_session import RenameSessionRequest
 from app.models.response_chat import ChatResponse
 from app.models.session_info import SessionInfo
 from dyresearch.agent import root_agent
+from dyresearch.sessions.memory import rename_adk_session
 from dyresearch.utils.logger import get_logger
 
 APP_NAME = "DyResearch"
@@ -72,14 +73,20 @@ async def chat(chat_request: ChatRequest) -> ChatResponse:
                 
                 for part in parts:
                     text_chunk = None
+                    is_thought = False
                     
-                    # THE FIX: Handle both Dictionary and Object formats
+                    # Handle both Dictionary and Object formats
                     if isinstance(part, dict):
                         text_chunk = part.get("text")
+                        # Check if this part is flagged as a thought
+                        is_thought = part.get("thought", False) 
                     elif hasattr(part, "text"):
                         text_chunk = part.text
+                        # LiteLLM/ADK usually sets this attribute on the Part object
+                        is_thought = getattr(part, "thought", False)
 
-                    if text_chunk:
+                    # ONLY append if it's not a thought
+                    if text_chunk and not is_thought:
                         final_response.append(text_chunk)
         
         full_text = "".join(final_response).strip()
@@ -94,38 +101,48 @@ async def chat(chat_request: ChatRequest) -> ChatResponse:
         raise HTTPException(status_code=500, detail=str(e))
     
 
-@chat_router.get("/history/{user_id}", response_model=List[SessionInfo])
-async def get_history(user_id: str):
+@chat_router.get("/history/{user_id}")
+async def get_history(user_id: str, limit: int = 10, offset: int = 0):
     try:
-        # 1. This returns a ListSessionsResponse object
+        # This returns a ListSessionsResponse object
         response = await runner.session_service.list_sessions(
             app_name=APP_NAME, 
             user_id=user_id
         )
         
-        # 2. Extract the actual list of Session objects
+        # Extract the actual list of Session objects
         sessions_list = response.sessions if hasattr(response, "sessions") else []
         
-        # 3. Sort by the 'last_update_time' (which is a float/timestamp)
+        # Sort by the 'last_update_time' (which is a float/timestamp)
         sorted_sessions = sorted(
             sessions_list, 
-            key=lambda s: s.last_update_time, 
+            key=lambda s: s.last_update_time,
             reverse=True
         )
-        
-        # 4. Map to your SessionInfo response model
-        return [
+
+        total_sessions = len(sorted_sessions)
+        # Brutal pagination here
+        paged_sessions = sorted_sessions[offset : offset + limit]
+
+        # Map to your SessionInfo response model
+        session_data = [
             SessionInfo(
                 session_id=s.id, 
-                # Convert float timestamp to datetime object for the Pydantic model
                 last_updated=datetime.fromtimestamp(s.last_update_time) if s.last_update_time > 0 else datetime.now()
             ) 
-            for s in sorted_sessions
+            for s in paged_sessions
         ]
+
+        return {
+            "total": total_sessions,
+            "limit": limit,
+            "offset": offset,
+            "sessions": session_data
+        }
 
     except Exception as e:
         logger.error(f"❌ Failed to fetch history: {e}")
-        return []
+        return {"total": 0, "sessions": []}
     
 
 @chat_router.get("/sessions/{session_id}/messages")
@@ -144,11 +161,18 @@ async def get_session_messages(session_id: str):
                     role = "👤 You" if event.author == "user" else "🤖 AI"
                     parts = getattr(event.content, "parts", [])
                     
-                    # THE FIX: Only join parts that actually contain a string
                     text_parts = []
+
                     for p in parts:
-                        val = getattr(p, 'text', None)
-                        if isinstance(val, str):
+                        is_thought = False
+                        if isinstance(p, dict):
+                            val = getattr(p, 'text', None)
+                            is_thought = getattr(p, "thought", False)
+                        elif hasattr(p, "text"):
+                            val = p.text
+                            # LiteLLM/ADK usually sets this attribute on the Part object
+                            is_thought = getattr(p, "thought", False)
+                        if isinstance(val, str) and not is_thought:
                             text_parts.append(val)
                     
                     full_text = "".join(text_parts).strip()
@@ -159,3 +183,33 @@ async def get_session_messages(session_id: str):
     except Exception as e:
         logger.error(f"Error fetching messages for {session_id}: {e}")
         return []
+    
+
+@chat_router.post("/sessions/{old_session_id}/rename")
+async def rename_session(old_session_id: str, request: RenameSessionRequest):
+    try: 
+        await rename_adk_session(
+            db_session_service=runner.session_service,
+            app_name=APP_NAME, 
+            old_session_id=old_session_id,
+            user_id=request.user_id,
+            new_session_id=request.new_session_id
+        )
+        return {"status": "success", "new_session_id": request.new_session_id}
+
+    except Exception as e: 
+        raise HTTPException(status_code=500, detail="Could not rename session")
+    
+
+@chat_router.delete("/sessions/{session_id}")
+async def delete_chat_session(session_id: str, user_id: str):
+    try:
+        await runner.session_service.delete_session(
+            app_name=APP_NAME,
+            session_id=session_id,
+            user_id=user_id
+        )
+        return {"status": "success", "message": f"Session {session_id} deleted."}
+    except Exception as e:
+        logger.error(f"❌ Failed to delete session: {e}")
+        raise HTTPException(status_code=500, detail="Delete failed")

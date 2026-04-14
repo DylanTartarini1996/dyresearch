@@ -1,7 +1,8 @@
+import json
 from typing import Dict, List, Optional
 
 from google.adk.tools.tool_context import ToolContext
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, func
 
 from .ingestion import ingest_and_chunk_file
 from ...entities.knowledge_chunk import KnowledgeChunk
@@ -19,7 +20,7 @@ async def ingest_source_chunks(
     title: str=None, 
     source_type: str=None, 
     authors: str = None, 
-    metadatas: Optional[Dict] = None,
+    metadata_json: str = "{}",
     tool_context: ToolContext = None
     ) -> str:
     """
@@ -38,10 +39,15 @@ async def ingest_source_chunks(
         Category (e.g., 'textbook', 'research_paper').
     - `authors`: `str`
         Author(s) name(s) if known.
-    - `metadatas`: `Optional[Dict]`
-        Optional dictionary of metadata associated with the source
+    - `metadata_json`: `str`
+        Optional string representation of a dictionary of metadata associated with the source
     """
     chunks_saved = 0
+
+    try:
+        metadatas = json.loads(metadata_json)
+    except json.JSONDecodeError:
+        metadatas = {}
 
     if not content_chunks:
         error_no_chunks = "❌ Error: No content chunks provided for ingestion."
@@ -108,7 +114,7 @@ async def ingest_source_file(
     subject: str="General",
     source_type: str=None, 
     authors: str = None, 
-    metadatas: Optional[Dict] = None,
+    metadata_json: str = "{}",
     tool_context: ToolContext = None
     ): 
     """ 
@@ -129,18 +135,23 @@ async def ingest_source_file(
         Category (e.g., 'textbook', 'research_paper').
     - `authors`: `str`
         Author(s) name(s) if known.
-    - `metadatas`: `Optional[Dict]`
-        Optional dictionary of metadata associated with the source
+    - `metadata_json`: `str`
+        Optional string representation of a dictionary of metadata associated with the source file
     """
     logger.debug(f"Ingesting from filepath {file_path}..")
 
     try:
+        metadatas = json.loads(metadata_json)
+    except json.JSONDecodeError:
+        metadatas = {}
+
+    try:
         chunks = await ingest_and_chunk_file(file_path=file_path, source_name=title)
 
-        file_metadata = {
+        file_metadata = str({
             "filename": title,
             **metadatas
-        }
+        })
         
         ingestion_msg = await ingest_source_chunks(
             content_chunks=chunks, 
@@ -148,13 +159,86 @@ async def ingest_source_file(
             title=title,
             source_type=source_type,
             authors=authors,
-            metadatas=file_metadata
+            metadata_json=file_metadata
         )
 
         return ingestion_msg
 
     except Exception as e:
         return f"Ingestion failed: {str(e)}"
+    
+
+async def get_documents_summary(
+    title: Optional[str] = None,
+    author: Optional[str] = None,
+    subject: Optional[str] = None,
+    source_type: Optional[str] = None,
+    limit: int = 20,
+    offset: int = 0,
+    include_note_taking_agent: bool = False,
+    include_notes: bool = False
+    ) -> Dict:
+    """ 
+    Returns a summary of all documents available in the Knowledge Base, 
+    organized by `source_title, `authors`, `subject` and `source_type`. 
+
+    Supports optional case-insensitive filtering on those fields. 
+    """
+    try:
+        async with get_db_context(db_config) as session:
+            # Base query for the unique document groups
+            base_stmt = select(
+                KnowledgeChunk.source_title,
+                KnowledgeChunk.authors,
+                KnowledgeChunk.subject,
+                KnowledgeChunk.source_type,
+                func.count(KnowledgeChunk.chunk_id).label("chunk_count")
+            ).group_by(
+                KnowledgeChunk.source_title,
+                KnowledgeChunk.authors,
+                KnowledgeChunk.subject,
+                KnowledgeChunk.source_type
+            )
+
+            # Apply filters to the base query
+            if title: base_stmt = base_stmt.where(KnowledgeChunk.source_title.ilike(f"%{title}%"))
+            if author: base_stmt = base_stmt.where(KnowledgeChunk.authors.ilike(f"%{author}%"))
+            if not include_note_taking_agent: 
+                base_stmt = base_stmt.where(KnowledgeChunk.authors != "note_taking_agent")
+            if subject: base_stmt = base_stmt.where(KnowledgeChunk.subject.ilike(f"%{subject}%"))
+            if source_type: base_stmt = base_stmt.where(KnowledgeChunk.source_type.ilike(f"%{source_type}%"))
+            if not include_notes:
+                base_stmt = base_stmt.where(KnowledgeChunk.source_type != "obsidian_note")
+
+            # Get TOTAL COUNT of unique documents (for UI pagination math)
+            count_stmt = select(func.count()).select_from(base_stmt.subquery())
+            total_count_res = await session.execute(count_stmt)
+            total_count = total_count_res.scalar() or 0
+
+            #  Apply Pagination and Sorting to the base query
+            paged_stmt = base_stmt.order_by(KnowledgeChunk.source_title).limit(limit).offset(offset)
+            
+            result = await session.execute(paged_stmt)
+            documents = result.all()
+            
+            return {
+                "total": total_count,
+                "limit": limit,
+                "offset": offset,
+                "documents": [
+                    {
+                        "title": doc.source_title or "Untitled Document",
+                        "authors": doc.authors or "Unknown Author",
+                        "subject": doc.subject or "general",
+                        "type": doc.source_type or "document",
+                        "chunks": doc.chunk_count
+                    }
+                    for doc in documents
+                ]
+            }
+    except Exception as e:
+        logger.error(f"❌ Failed to fetch library: {e}")
+        return {"total": 0, "documents": []}
 
 
 async def list_available_sources(tool_context: ToolContext = None) -> str:
@@ -162,6 +246,7 @@ async def list_available_sources(tool_context: ToolContext = None) -> str:
     Returns a formatted list of all unique sources (books, websites, papers) 
     currently indexed in the vector database, divided by subject. 
     """
+    #TODO might rename this
     try:
         async with get_db_context(db_config) as session:
             # SQLAlchemy: SELECT DISTINCT source_title, source_type, author

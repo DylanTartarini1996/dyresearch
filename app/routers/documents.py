@@ -1,10 +1,10 @@
 import json
 import shutil
 from pathlib import Path
-from fastapi import APIRouter, Form, UploadFile, File
-from typing import List
+from fastapi import APIRouter, Form, HTTPException, Query, UploadFile, File
+from typing import List, Optional
 
-from dyresearch.tools.knowledge_base.vector_store import ingest_source_chunks
+from dyresearch.tools.knowledge_base.vector_store import delete_source, get_documents_summary, ingest_source_chunks
 from dyresearch.tools.knowledge_base.ingestion import ingest_and_chunk_file
 from dyresearch.utils.logger import get_logger
 
@@ -68,3 +68,29 @@ async def ingest_documents(
                 file_path.unlink() 
                 
     return {"results": results}
+
+
+@doc_router.get("/library")
+async def get_library_documents(
+    title: Optional[str] = None,
+    author: Optional[str] = None,
+    subject: Optional[str] = None,
+    source_type: Optional[str] = None,
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0)
+):
+    return await get_documents_summary(
+        title=title, author=author, subject=subject, 
+        source_type=source_type, limit=limit, offset=offset
+    )
+
+
+@doc_router.delete("/library/{title}")
+async def delete_library_document(title: str):
+    try:
+        await delete_source(title=title)
+        return {"status": "success", "message": f"Document '{title}' removed from Knowledge Base."}
+    
+    except Exception as e:
+        logger.error(f"❌ Failed to delete document: {e}")
+        raise HTTPException(status_code=500, detail="Delete failed")

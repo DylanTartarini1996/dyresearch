@@ -42,7 +42,7 @@ def create_obsidian_note(
     frontmatter = (
         "---\n"
         f"aliases: [{clean_title}]\n"
-        "created_by: dyresearch"
+        "created_by: dyresearch\n"
         f"tags: {tag_string}\n"
         f"date_created: {today}\n"
         "---\n\n"
@@ -125,7 +125,8 @@ def list_obsidian_notes(
     folder: str = ""
     ) -> str:
     """
-    Lists all Markdown (.md) notes currently in the Obsidian vault.  
+    Lists all Markdown (.md) notes currently in the Obsidian vault, 
+    excluding internal configuration folders like `.obsidian`.
 
     -----
     Args:
@@ -143,8 +144,9 @@ def list_obsidian_notes(
         return f"Error: The path '{search_path}' does not exist."
         
     md_files = []
-    # Using os.walk to handle nested folders properly
+    
     for root, dirs, files in os.walk(search_path):
+        dirs[:] = [d for d in dirs if not d.startswith('.')]
         for file in files:
             if file.endswith(".md"):
                 # Get the path relative to the vault root for the agent to use
