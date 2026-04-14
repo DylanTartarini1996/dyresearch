@@ -1,3 +1,4 @@
+import json
 from typing import Dict, List, Optional
 
 from google.adk.tools.tool_context import ToolContext
@@ -19,7 +20,7 @@ async def ingest_source_chunks(
     title: str=None, 
     source_type: str=None, 
     authors: str = None, 
-    metadatas: Optional[Dict] = None,
+    metadata_json: str = "{}",
     tool_context: ToolContext = None
     ) -> str:
     """
@@ -38,10 +39,15 @@ async def ingest_source_chunks(
         Category (e.g., 'textbook', 'research_paper').
     - `authors`: `str`
         Author(s) name(s) if known.
-    - `metadatas`: `Optional[Dict]`
-        Optional dictionary of metadata associated with the source
+    - `metadata_json`: `str`
+        Optional string representation of a dictionary of metadata associated with the source
     """
     chunks_saved = 0
+
+    try:
+        metadatas = json.loads(metadata_json)
+    except json.JSONDecodeError:
+        metadatas = {}
 
     if not content_chunks:
         error_no_chunks = "❌ Error: No content chunks provided for ingestion."
@@ -108,7 +114,7 @@ async def ingest_source_file(
     subject: str="General",
     source_type: str=None, 
     authors: str = None, 
-    metadatas: Optional[Dict] = None,
+    metadata_json: str = "{}",
     tool_context: ToolContext = None
     ): 
     """ 
@@ -129,18 +135,23 @@ async def ingest_source_file(
         Category (e.g., 'textbook', 'research_paper').
     - `authors`: `str`
         Author(s) name(s) if known.
-    - `metadatas`: `Optional[Dict]`
-        Optional dictionary of metadata associated with the source
+    - `metadata_json`: `str`
+        Optional string representation of a dictionary of metadata associated with the source file
     """
     logger.debug(f"Ingesting from filepath {file_path}..")
 
     try:
+        metadatas = json.loads(metadata_json)
+    except json.JSONDecodeError:
+        metadatas = {}
+
+    try:
         chunks = await ingest_and_chunk_file(file_path=file_path, source_name=title)
 
-        file_metadata = {
+        file_metadata = str({
             "filename": title,
             **metadatas
-        }
+        })
         
         ingestion_msg = await ingest_source_chunks(
             content_chunks=chunks, 
@@ -148,7 +159,7 @@ async def ingest_source_file(
             title=title,
             source_type=source_type,
             authors=authors,
-            metadatas=file_metadata
+            metadata_json=file_metadata
         )
 
         return ingestion_msg
