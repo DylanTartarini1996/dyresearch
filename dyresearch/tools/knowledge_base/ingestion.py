@@ -22,7 +22,7 @@ converter = DocumentConverter()
 
 # TODO move this to configuration
 text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=2000, 
+    chunk_size=5000, 
     chunk_overlap=200,
     separators=["\n## ", "\n### ", "\n\n", "\n", " "]
 )
