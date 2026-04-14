@@ -110,6 +110,8 @@ var HistoryView = class extends import_obsidian.ItemView {
           const nameEl = titleContainer.createEl("div", { text: item.session_id, cls: "session-name" });
           const editBtn = titleContainer.createEl("button", { cls: "dy-edit-btn", attr: { "aria-label": "Rename Session" } });
           (0, import_obsidian.setIcon)(editBtn, "pencil");
+          const deleteBtn = titleContainer.createEl("button", { cls: "dy-delete-btn", attr: { "aria-label": "Delete Session" } });
+          (0, import_obsidian.setIcon)(deleteBtn, "trash");
           const date = new Date(item.last_updated).toLocaleDateString();
           sessionEl.createEl("small", { text: `Last activity: ${date}` });
           sessionEl.onClickEvent((e) => {
@@ -163,6 +165,23 @@ var HistoryView = class extends import_obsidian.ItemView {
                 editBtn.style.display = "flex";
               }
             });
+          });
+          deleteBtn.onClickEvent(async (e) => {
+            e.stopPropagation();
+            const confirmDelete = confirm(`Are you sure you want to delete the session "${item.session_id}"? This cannot be undone.`);
+            if (!confirmDelete) return;
+            try {
+              const response2 = await fetch(`http://localhost:8000/sessions/${item.session_id}?user_id=${this.plugin.userId}`, {
+                method: "DELETE"
+              });
+              if (response2.ok) {
+                if (this.plugin.currentSessionId === item.session_id) this.plugin.currentSessionId = "";
+                this.refreshView();
+                new import_obsidian.Notice("Session deleted.");
+              }
+            } catch (err) {
+              new import_obsidian.Notice("Failed to delete session.");
+            }
           });
         });
         this.chatOffset += data.sessions.length;
@@ -262,8 +281,25 @@ var HistoryView = class extends import_obsidian.ItemView {
         data.documents.forEach((doc) => {
           const card = list.createDiv({ cls: "library-card" });
           const header = card.createDiv({ cls: "library-card-header" });
-          header.createEl("strong", { text: doc.title });
-          header.createEl("span", { text: doc.type, cls: "badge-type" });
+          const titleInfo = header.createDiv({ cls: "library-title-group" });
+          titleInfo.createEl("strong", { text: doc.title });
+          titleInfo.createEl("span", { text: doc.type, cls: "badge-type" });
+          const libDeleteBtn = header.createEl("button", { cls: "dy-delete-btn-small" });
+          (0, import_obsidian.setIcon)(libDeleteBtn, "trash");
+          libDeleteBtn.onClickEvent(async () => {
+            if (!confirm(`Delete "${doc.title}" from Knowledge Base?`)) return;
+            try {
+              const response2 = await fetch(`http://localhost:8000/library/${encodeURIComponent(doc.title)}`, {
+                method: "DELETE"
+              });
+              if (response2.ok) {
+                this.refreshView();
+                new import_obsidian.Notice("Document removed.");
+              }
+            } catch (err) {
+              new import_obsidian.Notice("Failed to remove document.");
+            }
+          });
           card.createEl("div", { text: `\u{1F464} ${doc.authors}`, cls: "library-meta" });
           card.createEl("div", { text: `\u{1F3F7}\uFE0F ${doc.subject}`, cls: "library-meta" });
           card.createEl("div", { text: `\u{1F9E9} ${doc.chunks} chunks indexed`, cls: "library-meta chunks-info" });

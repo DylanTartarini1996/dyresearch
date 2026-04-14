@@ -6,11 +6,6 @@ interface ChatResponse {
     message: string; 
 }
 
-interface SessionInfo {
-    session_id: string;
-    last_updated: string;
-}
-
 export class HistoryView extends ItemView {
     // State to track which tab is active
     private activeTab: 'chats' | 'library' = 'chats';
@@ -110,6 +105,9 @@ export class HistoryView extends ItemView {
                     const editBtn = titleContainer.createEl("button", { cls: "dy-edit-btn", attr: { "aria-label": "Rename Session" } });
                     setIcon(editBtn, 'pencil');
 
+                    const deleteBtn = titleContainer.createEl("button", { cls: "dy-delete-btn", attr: { "aria-label": "Delete Session" } });
+                    setIcon(deleteBtn, 'trash');
+
                     const date = new Date(item.last_updated).toLocaleDateString();
                     //sessionEl.createEl("div", { text: item.session_id, cls: "session-name" });
                     sessionEl.createEl("small", { text: `Last activity: ${date}` });
@@ -182,6 +180,27 @@ export class HistoryView extends ItemView {
                                 editBtn.style.display = 'flex';
                             }
                         });
+                    });
+
+                    deleteBtn.onClickEvent(async (e) => {
+                        e.stopPropagation();
+                        
+                        const confirmDelete = confirm(`Are you sure you want to delete the session "${item.session_id}"? This cannot be undone.`);
+                        if (!confirmDelete) return;
+
+                        try {
+                            const response = await fetch(`http://localhost:8000/sessions/${item.session_id}?user_id=${this.plugin.userId}`, {
+                                method: 'DELETE'
+                            });
+
+                            if (response.ok) {
+                                if (this.plugin.currentSessionId === item.session_id) this.plugin.currentSessionId = "";
+                                this.refreshView();
+                                new Notice("Session deleted.");
+                            }
+                        } catch (err) {
+                            new Notice("Failed to delete session.");
+                        }
                     });
                 });
                 
@@ -323,8 +342,29 @@ export class HistoryView extends ItemView {
                 data.documents.forEach((doc: any) => {
                     const card = list.createDiv({ cls: "library-card" });
                     const header = card.createDiv({ cls: "library-card-header" });
-                    header.createEl("strong", { text: doc.title });
-                    header.createEl("span", { text: doc.type, cls: "badge-type" });
+
+                    const titleInfo = header.createDiv({ cls: "library-title-group" });
+                    titleInfo.createEl("strong", { text: doc.title });
+                    titleInfo.createEl("span", { text: doc.type, cls: "badge-type" });
+
+                    const libDeleteBtn = header.createEl("button", { cls: "dy-delete-btn-small" });
+                    setIcon(libDeleteBtn, 'trash');
+
+                    libDeleteBtn.onClickEvent(async () => {
+                        if (!confirm(`Delete "${doc.title}" from Knowledge Base?`)) return;
+
+                        try {
+                            const response = await fetch(`http://localhost:8000/library/${encodeURIComponent(doc.title)}`, {
+                                method: 'DELETE'
+                            });
+                            if (response.ok) {
+                                this.refreshView();
+                                new Notice("Document removed.");
+                            }
+                        } catch (err) {
+                            new Notice("Failed to remove document.");
+                        }
+                    });
                     
                     card.createEl("div", { text: `👤 ${doc.authors}`, cls: "library-meta" });
                     card.createEl("div", { text: `🏷️ ${doc.subject}`, cls: "library-meta" });

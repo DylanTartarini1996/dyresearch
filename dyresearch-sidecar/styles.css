@@ -380,3 +380,40 @@
     border-radius: 3px;
     color: var(--text-normal);
 }
+
+/* Shared danger button style */
+.dy-delete-btn, .dy-delete-btn-small {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+.dy-delete-btn:hover, .dy-delete-btn-small:hover {
+    color: var(--text-error); /* Obsidian's built-in red */
+    background-color: var(--background-modifier-error-hover);
+}
+
+/* Chat-specific positioning */
+.history-item:hover .dy-delete-btn {
+    opacity: 1;
+}
+
+/* Library-specific positioning */
+.library-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.library-title-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
