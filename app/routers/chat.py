@@ -187,15 +187,29 @@ async def get_session_messages(session_id: str):
 
 @chat_router.post("/sessions/{old_session_id}/rename")
 async def rename_session(old_session_id: str, request: RenameSessionRequest):
-        try: 
-            await rename_adk_session(
-                db_session_service=runner.session_service,
-                app_name=APP_NAME, 
-                old_session_id=old_session_id,
-                user_id=request.user_id,
-                new_session_id=request.new_session_id
-            )
-            return {"status": "success", "new_session_id": request.new_session_id}
+    try: 
+        await rename_adk_session(
+            db_session_service=runner.session_service,
+            app_name=APP_NAME, 
+            old_session_id=old_session_id,
+            user_id=request.user_id,
+            new_session_id=request.new_session_id
+        )
+        return {"status": "success", "new_session_id": request.new_session_id}
 
-        except Exception as e: 
-            raise HTTPException(status_code=500, detail="Could not rename session")
+    except Exception as e: 
+        raise HTTPException(status_code=500, detail="Could not rename session")
+    
+
+@chat_router.delete("/sessions/{session_id}")
+async def delete_chat_session(session_id: str, user_id: str):
+    try:
+        await runner.session_service.delete_session(
+            app_name=APP_NAME,
+            session_id=session_id,
+            user_id=user_id
+        )
+        return {"status": "success", "message": f"Session {session_id} deleted."}
+    except Exception as e:
+        logger.error(f"❌ Failed to delete session: {e}")
+        raise HTTPException(status_code=500, detail="Delete failed")
