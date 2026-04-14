@@ -42,7 +42,7 @@ def create_obsidian_note(
     frontmatter = (
         "---\n"
         f"aliases: [{clean_title}]\n"
-        "created_by: dyresearch"
+        "created_by: dyresearch\n"
         f"tags: {tag_string}\n"
         f"date_created: {today}\n"
         "---\n\n"
