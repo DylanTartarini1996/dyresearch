@@ -57,19 +57,39 @@ async def ddgs(query: str, max_results: int = 5) -> str:
     
 
 async def google_search(query: str) -> str:
-    # Initialize a temporary client just for this tool execution
-    client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
-    # Configure the Search Tool Natively
-    search_tool = types.Tool(google_search=types.GoogleSearch())
-    # We make a direct call to Gemini to perform the search
-    response = client.models.generate_content(
-        model=os.getenv("GOOGLE_MODEL_NAME"),
-        contents=query,
-        config=types.GenerateContentConfig(
-            tools=[search_tool],
+    try:
+        # Initialize a temporary client just for this tool execution
+        client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
+        
+        # Configure the Search Tool Natively
+        search_tool = types.Tool(google_search=types.GoogleSearch())
+        
+        # Make the call
+        response = client.models.generate_content(
+            model=os.getenv("GOOGLE_MODEL_NAME"),
+            contents=query,
+            config=types.GenerateContentConfig(
+                tools=[search_tool],
+            )
         )
-    )
-    return "\n".join(response.candidates)
+
+        # 1. Check if we actually got candidates
+        if not response.candidates:
+            return "No search results found."
+
+        # 2. Extract the text content from the candidates safely
+        # Most generate_content calls only return 1 candidate by default
+        output = []
+        for candidate in response.candidates:
+            # Join the text from all parts of the candidate (usually just one)
+            parts_text = [part.text for part in candidate.content.parts if part.text]
+            output.append("\n".join(parts_text))
+
+        return "\n".join(output)
+
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to perform search using Gemini's Client: {str(e)}")
+        return f"Error performing Google Search: {str(e)}"
 
 
 async def perform_web_search(
