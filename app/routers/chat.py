@@ -1,7 +1,9 @@
+import json
 import os
 
 from datetime import datetime
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from google.genai import types
 from google.adk.runners import Runner
 from google.adk.sessions.database_session_service import DatabaseSessionService
@@ -100,6 +102,100 @@ async def chat(chat_request: ChatRequest) -> ChatResponse:
         logger.error(f"❌ Server Error: {e}") # Log to your terminal
         raise HTTPException(status_code=500, detail=str(e))
     
+
+@chat_router.post("/chat/stream")
+async def chat_stream(chat_request: ChatRequest):
+
+    async def event_generator():
+        try: 
+            # Ensure Session Exists (Same as before)
+            session = await runner.session_service.get_session(
+                app_name=APP_NAME, 
+                user_id=chat_request.user_id, 
+                session_id=chat_request.session_id
+            )
+            if session is not None: 
+                logger.info(f"Existing session found: {chat_request.session_id}")
+            else:
+                logger.info(f"Creating new session: {chat_request.session_id}")
+                await runner.session_service.create_session(
+                    app_name=APP_NAME, 
+                    user_id=chat_request.user_id, 
+                    session_id=chat_request.session_id
+                )
+
+            new_msg = types.Content(
+                role="user", 
+                parts=[types.Part(text=chat_request.message)]
+            )
+
+            # Iterate through the async stream
+            async for event in runner.run_async(
+                user_id=chat_request.user_id,
+                session_id=chat_request.session_id,
+                invocation_id=chat_request.invocation_id,
+                new_message=new_msg
+            ):
+                author = getattr(event, "author", "")
+                if author == "user":
+                    continue
+
+                # --- Check for Agent Transfers ---
+                actions = getattr(event, "actions", {})
+                if actions:
+                    transfer_agent = actions.get("transfer_to_agent") if isinstance(actions, dict) else getattr(actions, "transfer_to_agent", None)
+                    if transfer_agent:
+                        payload = {"type": "system", "content": f"🔄 Transferring to {transfer_agent}..."}
+                        yield f"data: {json.dumps(payload)}\n\n"
+
+                # --- Check Content Parts ---
+                content = getattr(event, "content", None)
+                if content:
+                    parts = getattr(content, "parts", [])
+                    
+                    for part in parts:
+                        text_chunk = None
+                        is_thought = False
+                        
+                        # Handle Dictionary format
+                        if isinstance(part, dict):
+                            # Catch Function Calls
+                            if "function_call" in part:
+                                tool_name = part["function_call"].get("name", "unknown_tool")
+                                payload = {"type": "system", "content": f"🛠️ Using tool: {tool_name}..."}
+                                yield f"data: {json.dumps(payload)}\n\n"
+                                
+                            text_chunk = part.get("text")
+                            is_thought = part.get("thought", False) 
+                        
+                        # Handle Object format
+                        else:
+                            # Catch Function Calls
+                            function_call = getattr(part, "function_call", None)
+                            if function_call:
+                                tool_name = getattr(function_call, "name", "unknown_tool")
+                                payload = {"type": "system", "content": f"🛠️ Using tool: {tool_name}..."}
+                                yield f"data: {json.dumps(payload)}\n\n"
+
+                            text_chunk = getattr(part, "text", None)
+                            is_thought = getattr(part, "thought", False)
+
+                        # YIELD Text or Thoughts
+                        if text_chunk:
+                            payload = {
+                                "type": "thinking" if is_thought else "answer",
+                                "content": text_chunk
+                            }
+                            yield f"data: {json.dumps(payload)}\n\n"
+            
+        except Exception as e:
+            logger.error(f"❌ Server Error during stream: {e}")
+            # Yield the error to the frontend so the UI doesn't hang indefinitely
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+    # 4. Return the StreamingResponse
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
 
 @chat_router.get("/history/{user_id}")
 async def get_history(user_id: str, limit: int = 10, offset: int = 0):
