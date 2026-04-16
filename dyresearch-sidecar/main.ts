@@ -425,7 +425,7 @@ export default class DyResearchPlugin extends Plugin {
     }
 }
 
-class ChatModal extends Modal {
+export class ChatModal extends Modal {
     plugin: DyResearchPlugin;
 
     constructor(app: App, plugin: DyResearchPlugin) {
@@ -445,37 +445,45 @@ class ChatModal extends Modal {
 
         const chatHistory = contentEl.createDiv({ cls: 'chat-history' });
         
+        //  Load History
         try {
             const historyResponse = await fetch(`http://localhost:8000/sessions/${this.plugin.currentSessionId}/messages`);
             const messages = await historyResponse.json();
             
             for (const msg of messages) {
-                const msgDiv = this.appendMessage(chatHistory, msg.role, '');
-                // Render as Markdown so old code blocks/bolding look right
+                const senderLabel = msg.role === 'user' ? '👤 You' : '🤖 AI';
+                const msgDiv = this.appendSimpleMessage(chatHistory, senderLabel, '');
                 await MarkdownRenderer.render(this.app, msg.content, msgDiv, '', this.plugin);
             }
-            // Scroll to the bottom after loading
             chatHistory.scrollTop = chatHistory.scrollHeight;
         } catch (err) {
             console.error("Could not load session history", err);
         }
         
+        // Input Setup
         const inputContainer = contentEl.createDiv({ cls: 'chat-input-container' });
         const inputField = inputContainer.createEl('input', { 
             type: 'text', 
             placeholder: 'Type your message...' 
         });
+        inputField.focus();
 
         inputField.addEventListener('keydown', async (e: KeyboardEvent) => {
             if (e.key === 'Enter' && inputField.value.trim() !== '') {
                 const userQuery = inputField.value;
                 inputField.value = '';
 
-                this.appendMessage(chatHistory, '👤 You', userQuery);
-                const aiMsgDiv = this.appendMessage(chatHistory, '🤖 AI', '...');
+                // Add User Message
+                this.appendSimpleMessage(chatHistory, '👤 You', userQuery);
                 
+                // Set up AI Streaming Area
+                const ai = this.appendStreamingMessage(chatHistory, '🤖 AI');
+                
+                let fullAnswer = "";
+                chatHistory.scrollTop = chatHistory.scrollHeight;
+
                 try {
-                    const apiResponse = await fetch('http://localhost:8000/chat', {
+                    const response = await fetch('http://localhost:8000/chat/stream', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ 
@@ -485,27 +493,76 @@ class ChatModal extends Modal {
                         })
                     });
 
-                    if (!apiResponse.ok) throw new Error('Server unreachable');
-                    const data: ChatResponse = await apiResponse.json();
+                    if (!response.body) throw new Error('No response body');
 
-                    aiMsgDiv.empty(); 
-                    await MarkdownRenderer.render(this.app, data.message, aiMsgDiv, '', this.plugin);
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
 
-                    // Refresh history sidebar to update timestamps
-                    const historyView = this.app.workspace.getLeavesOfType(VIEW_TYPE_HISTORY)[0]?.view as HistoryView;
-                    if (historyView) historyView.refreshView();
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+
+                        const chunk = decoder.decode(value, { stream: true });
+                        const lines = chunk.split('\n\n');
+
+                        for (const line of lines) {
+                            if (!line.startsWith('data: ')) continue;
+                            
+                            try {
+                                const data = JSON.parse(line.replace('data: ', ''));
+
+                                if (data.type === 'system') {
+                                    ai.statusEl.setText(data.content);
+                                } else if (data.type === 'thinking') {
+                                    ai.thinkingEl.style.display = 'block';
+                                    ai.thinkingEl.innerText += data.content;
+                                } else if (data.type === 'answer') {
+                                    fullAnswer += data.content;
+                                    ai.answerEl.empty();
+                                    await MarkdownRenderer.render(this.app, fullAnswer, ai.answerEl, '', this.plugin);
+                                } else if (data.error) {
+                                    new Notice("AI Error: " + data.error);
+                                }
+                            } catch (parseErr) {
+                                console.error("Error parsing stream chunk", parseErr);
+                            }
+                        }
+                        chatHistory.scrollTop = chatHistory.scrollHeight;
+                    }
+                    
+                    ai.statusEl.setText(""); // Clear status "Using tool..." when finished
 
                 } catch (err) {
-                    aiMsgDiv.setText('❌ Error: Could not reach Python sidecar.');
+                    ai.answerEl.setText('❌ Error: Could not reach Python sidecar.');
+                    console.error(err);
                 }
-                chatHistory.scrollTop = chatHistory.scrollHeight;
             }
         });
     }
 
-    appendMessage(container: HTMLElement, sender: string, text: string): HTMLElement {
+    // Creates a structured message area for streaming AI responses
+    appendStreamingMessage(container: HTMLElement, sender: string) {
+        const msgWrapper = container.createDiv({ cls: 'chat-msg-wrapper' });
+        msgWrapper.createEl('small', { text: sender, cls: 'chat-sender' });
+        
+        const statusEl = msgWrapper.createDiv({ cls: 'chat-status-indicator' });
+        const thinkingEl = msgWrapper.createDiv({ cls: 'chat-thinking-block' });
+        const answerEl = msgWrapper.createDiv({ cls: 'chat-msg-content' });
+        
+        thinkingEl.style.display = 'none'; // Hidden until 'thinking' tokens arrive
+
+        return { statusEl, thinkingEl, answerEl };
+    }
+
+    // Creates a simple message area for users or history loading
+    appendSimpleMessage(container: HTMLElement, sender: string, text: string): HTMLElement {
         const msgWrapper = container.createDiv({ cls: 'chat-msg-wrapper' });
         msgWrapper.createEl('small', { text: sender, cls: 'chat-sender' });
         return msgWrapper.createDiv({ cls: 'chat-msg-content', text: text });
+    }
+
+    onClose() {
+        const { contentEl } = this;
+        contentEl.empty();
     }
 }
