@@ -346,11 +346,37 @@ async def search_knowledge_base(
     query: str, 
     subject_filter: Optional[str] = "",
     limit: int = 5, 
+    retrieve_adjacent_chunks: bool = False,
     tool_context: ToolContext = None
     ) -> str:
     """
-    Search the vector store knowledge base for information related to a specific query.
-    Returns the most relevant text chunks along with their source metadata.
+    Performs a semantic search across the research library and returns relevant text passages.
+    
+    This tool uses vector similarity to find the most relevant information. To provide 
+    better context for complex reasoning, it can optionally reconstruct the surrounding 
+    narrative of a hit.
+
+    -------
+    Params:
+    -------
+    `query`: `str` 
+        The specific question or topic to search for in the vector store.
+    `subject_filter`: `Optional[str]`
+        Filters results to a specific research area (e.g., 'machine_learning' or 'physics'). 
+        Defaults to searching the entire library.
+    `limit`: `int`
+        The number of top-k similar chunks to retrieve. Defaults to 5.
+    `retrieve_adjacent_chunks`: bool 
+        If `True`, fetches the immediate preceding (n-1) and succeeding (n+1) chunks for every similarity hit. 
+        Useful when a hit is a partial sentence or needs broader context. 
+        **Note:** This significantly increases the returned text volume.
+
+    --------
+    Returns:
+    --------
+    `str`: A formatted Markdown string containing the retrieved passages, 
+    grouped by source document with full citations (Source Title and Authors). 
+    Returns a "No results found" message if the search yields no hits.
     """
     embedder = get_embeddings(embedder_conf)
     if not embedder:
@@ -374,13 +400,41 @@ async def search_knowledge_base(
 
             logger.info(f"Retrieved {len(chunks)} Chunks")
 
-            # Format the response with clear citations 
-            formatted_results = [f"### Relevant Passages (Index: {subject_filter or 'All'}):"]
-            for i, chunk in enumerate(chunks, 1):
-                citation = f"Source: {chunk.source_title} | Authors: {chunk.authors}"
-                formatted_results.append(f"{i}. > {chunk.text}\n   *({citation})*")
+            final_chunks = list(chunks)
 
-            return "\n\n".join(formatted_results)
+            # Expanded Retrieval Logic
+            if retrieve_adjacent_chunks:
+                logger.info("Expanding search to adjacent chunks...")
+
+                for chunk in chunks:
+                    # Logic: Find where source matches and index is i-1 or i+1
+                    neighbor_stmt = select(KnowledgeChunk).where(
+                        KnowledgeChunk.source_title == chunk.source_title,
+                        KnowledgeChunk.chunk_id.in_([chunk.chunk_id - 1, chunk.chunk_id + 1])
+                    )
+                    neighbor_result = await session.execute(neighbor_stmt)
+                    neighbors = neighbor_result.scalars().all()
+                    final_chunks.extend(neighbors)
+
+                # Deduplication and Re-ordering
+                # Use a dict to dedup by ID, then sort by source and sequence for readability
+                unique_chunks = {c.id: c for c in final_chunks}.values()
+                final_chunks = sorted(unique_chunks, key=lambda x: (x.source_title, x.chunk_id))
+
+            logger.info(f"Retrieved {len(final_chunks)} Chunks (Base hits: {len(chunks)})")
+
+            # Format the response with clear citations 
+            formatted_results = [f"### Knowledge Base Results (Adjacent Context: {'On' if retrieve_adjacent_chunks else 'Off'}):"]
+            
+            current_source = ""
+            for chunk in final_chunks:
+                # Group by source title visually
+                if chunk.source_title != current_source:
+                    formatted_results.append(f"\n--- From: **{chunk.source_title}** ---")
+                    current_source = chunk.source_title
+                formatted_results.append(f"> ... {chunk.text.strip()} ...")
+
+            return "\n".join(formatted_results)
 
     except Exception as e:
         logger.warning(f"An error occured: {e}")
