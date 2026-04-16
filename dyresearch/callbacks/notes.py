@@ -5,7 +5,6 @@ import yaml
 from pathlib import Path
 from typing import Any, Dict
 
-from google.adk.agents.callback_context import CallbackContext
 from google.adk.tools import BaseTool
 from google.adk.tools.tool_context import ToolContext
 
@@ -94,7 +93,7 @@ async def discover_and_apply_links_callback(
     """
     if tool.name not in ["notes_create_obsidian_note", "notes_update_obsidian_note"]:
         return
-    print(tool_context)
+    
     if "vault_path" not in tool_context.state:
         vault_path = os.getenv("OBSIDIAN_VAULT_PATH", "obsidian")
     else:
