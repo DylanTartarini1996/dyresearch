@@ -3,7 +3,7 @@ import os
 from dotenv import load_dotenv
 from google.adk.agents import Agent
 
-from ..callbacks import sync_note_to_library_callback
+from ..callbacks import discover_and_apply_links_callback, sync_note_to_library_callback
 from ..config import LLMConf
 from ..factory.llm_providers import get_litellm_model
 from ..tools.notes import NoteTakingToolset
@@ -52,4 +52,4 @@ note_taking_agent = Agent(
     )
 )
 
-note_taking_agent.after_tool_callback = sync_note_to_library_callback
+note_taking_agent.after_tool_callback = [discover_and_apply_links_callback, sync_note_to_library_callback]
