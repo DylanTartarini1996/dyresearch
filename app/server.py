@@ -1,18 +1,31 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import __routers__
+
+from dyresearch.tools.knowledge_base.ingestion import docling_executor
 from dyresearch.utils.logger import get_logger
 
 
 logger = get_logger(__name__)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # --- Startup Logic ---
+    yield 
+    # --- Shutdown Logic ---
+    logger.info("Shutting down documents Process Pool...")
+    docling_executor.shutdown(wait=True, cancel_futures=True)
+
 
 app = FastAPI(
     title="DyResearch",
     description="API wrapper for DyResearch study project ",
     version="1.0.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    lifespan=lifespan
 )
 
 # CORS is REQUIRED for Obsidian to talk to localhost safely

@@ -50,4 +50,4 @@ research_agent = Agent(
     )
 )
 
-research_agent.after_tool_callback = upload_file_callback
+# research_agent.after_tool_callback = upload_file_callback

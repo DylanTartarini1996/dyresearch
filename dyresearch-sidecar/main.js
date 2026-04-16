@@ -19,6 +19,7 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // main.ts
 var main_exports = {};
 __export(main_exports, {
+  ChatModal: () => ChatModal,
   HistoryView: () => HistoryView,
   VIEW_TYPE_HISTORY: () => VIEW_TYPE_HISTORY,
   default: () => DyResearchPlugin
@@ -365,7 +366,8 @@ var ChatModal = class extends import_obsidian.Modal {
       const historyResponse = await fetch(`http://localhost:8000/sessions/${this.plugin.currentSessionId}/messages`);
       const messages = await historyResponse.json();
       for (const msg of messages) {
-        const msgDiv = this.appendMessage(chatHistory, msg.role, "");
+        const senderLabel = msg.role === "user" ? "\u{1F464} You" : "\u{1F916} AI";
+        const msgDiv = this.appendSimpleMessage(chatHistory, senderLabel, "");
         await import_obsidian.MarkdownRenderer.render(this.app, msg.content, msgDiv, "", this.plugin);
       }
       chatHistory.scrollTop = chatHistory.scrollHeight;
@@ -377,15 +379,17 @@ var ChatModal = class extends import_obsidian.Modal {
       type: "text",
       placeholder: "Type your message..."
     });
+    inputField.focus();
     inputField.addEventListener("keydown", async (e) => {
-      var _a;
       if (e.key === "Enter" && inputField.value.trim() !== "") {
         const userQuery = inputField.value;
         inputField.value = "";
-        this.appendMessage(chatHistory, "\u{1F464} You", userQuery);
-        const aiMsgDiv = this.appendMessage(chatHistory, "\u{1F916} AI", "...");
+        this.appendSimpleMessage(chatHistory, "\u{1F464} You", userQuery);
+        const ai = this.appendStreamingMessage(chatHistory, "\u{1F916} AI");
+        let fullAnswer = "";
+        chatHistory.scrollTop = chatHistory.scrollHeight;
         try {
-          const apiResponse = await fetch("http://localhost:8000/chat", {
+          const response = await fetch("http://localhost:8000/chat/stream", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -394,27 +398,68 @@ var ChatModal = class extends import_obsidian.Modal {
               user_id: this.plugin.userId
             })
           });
-          if (!apiResponse.ok) throw new Error("Server unreachable");
-          const data = await apiResponse.json();
-          aiMsgDiv.empty();
-          await import_obsidian.MarkdownRenderer.render(this.app, data.message, aiMsgDiv, "", this.plugin);
-          const historyView = (_a = this.app.workspace.getLeavesOfType(VIEW_TYPE_HISTORY)[0]) == null ? void 0 : _a.view;
-          if (historyView) historyView.refreshView();
+          if (!response.body) throw new Error("No response body");
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const chunk = decoder.decode(value, { stream: true });
+            const lines = chunk.split("\n\n");
+            for (const line of lines) {
+              if (!line.startsWith("data: ")) continue;
+              try {
+                const data = JSON.parse(line.replace("data: ", ""));
+                if (data.type === "system") {
+                  ai.statusEl.setText(data.content);
+                } else if (data.type === "thinking") {
+                  ai.thinkingEl.style.display = "block";
+                  ai.thinkingEl.innerText += data.content;
+                } else if (data.type === "answer") {
+                  fullAnswer += data.content;
+                  ai.answerEl.empty();
+                  await import_obsidian.MarkdownRenderer.render(this.app, fullAnswer, ai.answerEl, "", this.plugin);
+                } else if (data.error) {
+                  new import_obsidian.Notice("AI Error: " + data.error);
+                }
+              } catch (parseErr) {
+                console.error("Error parsing stream chunk", parseErr);
+              }
+            }
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+          }
+          ai.statusEl.setText("");
         } catch (err) {
-          aiMsgDiv.setText("\u274C Error: Could not reach Python sidecar.");
+          ai.answerEl.setText("\u274C Error: Could not reach Python sidecar.");
+          console.error(err);
         }
-        chatHistory.scrollTop = chatHistory.scrollHeight;
       }
     });
   }
-  appendMessage(container, sender, text) {
+  // Creates a structured message area for streaming AI responses
+  appendStreamingMessage(container, sender) {
+    const msgWrapper = container.createDiv({ cls: "chat-msg-wrapper" });
+    msgWrapper.createEl("small", { text: sender, cls: "chat-sender" });
+    const statusEl = msgWrapper.createDiv({ cls: "chat-status-indicator" });
+    const thinkingEl = msgWrapper.createDiv({ cls: "chat-thinking-block" });
+    const answerEl = msgWrapper.createDiv({ cls: "chat-msg-content" });
+    thinkingEl.style.display = "none";
+    return { statusEl, thinkingEl, answerEl };
+  }
+  // Creates a simple message area for users or history loading
+  appendSimpleMessage(container, sender, text) {
     const msgWrapper = container.createDiv({ cls: "chat-msg-wrapper" });
     msgWrapper.createEl("small", { text: sender, cls: "chat-sender" });
     return msgWrapper.createDiv({ cls: "chat-msg-content", text });
   }
+  onClose() {
+    const { contentEl } = this;
+    contentEl.empty();
+  }
 };
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
+  ChatModal,
   HistoryView,
   VIEW_TYPE_HISTORY
 });
