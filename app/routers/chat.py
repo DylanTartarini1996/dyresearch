@@ -1,18 +1,15 @@
 import json
-import os
 
 from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from google.genai import types
-from google.adk.runners import Runner
-from google.adk.sessions.database_session_service import DatabaseSessionService
 
 from app.models.request_chat import ChatRequest
 from app.models.request_rename_session import RenameSessionRequest
 from app.models.response_chat import ChatResponse
 from app.models.session_info import SessionInfo
-from dyresearch.agent import root_agent
+from dyresearch.factory.runner import runner
 from dyresearch.sessions.memory import rename_adk_session
 from dyresearch.utils.logger import get_logger
 
@@ -21,15 +18,6 @@ APP_NAME = "DyResearch"
 logger = get_logger(__name__)
 
 chat_router = APIRouter(tags=["chats"])
-
-db_url =os.getenv("SESSION_SERVICE_URI", "postgresql+asyncpg://adk_user:adk_password@localhost:5432/adk_history")
-session_service = DatabaseSessionService(db_url)
-
-runner = Runner(
-    app_name=APP_NAME,
-    agent=root_agent,
-    session_service=session_service
-)
 
 @chat_router.post("/chat")
 async def chat(chat_request: ChatRequest) -> ChatResponse:
