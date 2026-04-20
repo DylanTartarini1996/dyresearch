@@ -1,0 +1,29 @@
+import PyInstaller.__main__
+import os
+import sys
+
+base_dir = os.path.abspath(os.path.dirname(__file__))
+
+APP_NAME = "DyResearchEngine"
+
+def build():
+    params = [
+        os.path.join(base_dir, 'app', 'server.py'), # Entry point
+        f'--name={APP_NAME}',
+        '--onedir',
+        '--windowed',
+        '--clean',
+        
+        f'--add-data={os.path.join(base_dir, "app")}{os.pathsep}app',
+        f'--add-data={os.path.join(base_dir, "dyresearch")}{os.pathsep}dyresearch',
+        
+        '--hidden-import=uvicorn',
+        '--hidden-import=lancedb',
+        '--collect-all=docling',
+        '--collect-all=lancedb',
+    ]
+    
+    PyInstaller.__main__.run(params)
+
+if __name__ == "__main__":
+    build()

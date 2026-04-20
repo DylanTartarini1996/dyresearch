@@ -40,3 +40,22 @@ app.add_middleware(
 for router in __routers__:
     app.include_router(router)
     logger.debug(f"Included {router.__class__} Router")
+
+
+if __name__ == "__main__":
+    import uvicorn
+    import sys
+
+    logger.info("🚀 DyResearch Engine is starting on http://127.0.0.1:8000")
+    
+    try:
+        uvicorn.run(
+            "app.server:app", 
+            host="127.0.0.1", 
+            port=8000, 
+            reload=False,     # MUST be False for PyInstaller
+            # workers=1         # Keep it simple for local use
+        )
+    except Exception as e:
+        logger.error(f"❌ Failed to start server: {e}")
+        input("Press Enter to exit...")
