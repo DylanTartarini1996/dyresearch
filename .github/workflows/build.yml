@@ -61,7 +61,7 @@ jobs:
           uv venv
           uv pip install . pyinstaller
           ls -F
-          uv run python desktop-build.py
+          uv run python desktop_build.py
           
 
       # --- Packaging ---
