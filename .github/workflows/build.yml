@@ -60,7 +60,7 @@ jobs:
           uv python install 3.12
           uv venv
           uv pip install . pyinstaller
-          uv run python desktop-build.py
+          find . -name "desktop-build.py" -exec uv run python {} \;
 
       - name: Zip Engine (Windows)
         if: matrix.os == 'windows-latest'
