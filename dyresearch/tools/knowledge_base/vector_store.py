@@ -347,31 +347,38 @@ async def delete_source(title: str, tool_context: ToolContext = None) -> str:
 
 async def delete_by_subject(subject: str) -> str:
     """
-    Deletes ALL knowledge chunks associated with a specific subject index.
+    Deletes ALL knowledge chunks associated with a specific subject index.  
+
     Use this to clear an entire category (e.g., 'physics', 'temp_research') from the library.
     """
     if not subject:
-        return "Error: Please provide a valid subject name to delete."
+        return "Error: Please provide a valid subject name."
     
     target_subject = subject.lower()
 
     try:
         async with get_db_context(db_config) as session:
+            # 1. Relational Deletion
             stmt = delete(KnowledgeChunk).where(KnowledgeChunk.subject == target_subject)
             result = await session.execute(stmt)
             deleted_count = result.rowcount
             
             if deleted_count == 0:
-                return f"No records found for subject '{subject}'. Nothing was deleted."
-            
-            # Finalize the transaction
+                return f"No records found for subject '{subject}'."
+
+            # 2. Vector Store Deletion (LanceDB specific)
+            if not IS_POSTGRES:
+                try:
+                    db = lancedb.connect("./.dyresearch_vectors")
+                    if "research_chunks" in db.table_names():
+                        table = db.open_table("research_chunks")
+                        table.delete(f"subject = '{target_subject}'")
+                        logger.info(f"LanceDB synced: purged subject index '{target_subject}'")
+                except Exception as ve:
+                    logger.warning(f"Metadata deleted but LanceDB sync failed: {ve}")
+
             await session.commit()
-            
-            return (
-                f"🗑️ Bulk Delete Successful!\n"
-                f"Removed the entire '{subject}' index.\n"
-                f"Total chunks purged: {deleted_count}."
-            )
+            return f"🗑️ Bulk Delete Successful! Removed the '{subject}' index ({deleted_count} chunks)."
         
     except Exception as e:
         return f"Failed to perform bulk delete on subject '{subject}': {str(e)}"
