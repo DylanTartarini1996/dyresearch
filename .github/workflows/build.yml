@@ -58,6 +58,7 @@ jobs:
       - name: Install Project & Build Engine
         run: |
           uv python install 3.12
+          uv venv
           uv pip install . pyinstaller
           uv run python desktop-build.py
 
