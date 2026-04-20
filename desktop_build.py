@@ -14,6 +14,7 @@ def build():
         '--windowed',
         '--clean',
         
+        # Add the folders
         f'--add-data={os.path.join(base_dir, "app")}{os.pathsep}app',
         f'--add-data={os.path.join(base_dir, "dyresearch")}{os.pathsep}dyresearch',
         
@@ -21,8 +22,10 @@ def build():
         '--hidden-import=lancedb',
         '--collect-all=docling',
         '--collect-all=lancedb',
+        '--collect-all=uvicorn',
     ]
     
+    print(f"Starting PyInstaller with base_dir: {base_dir}")
     PyInstaller.__main__.run(params)
 
 if __name__ == "__main__":

@@ -60,20 +60,29 @@ jobs:
           uv python install 3.12
           uv venv
           uv pip install . pyinstaller
-          find . -name "desktop-build.py" -exec uv run python {} \;
+          ls -F
+          uv run python desktop-build.py
+          
 
       # --- Packaging ---
       - name: Zip Release (Windows)
         if: matrix.os == 'windows-latest'
-        # This zips the first folder found in dist/
         run: |
-          Get-ChildItem ./dist | Select-Object -First 1 | ForEach-Object { Compress-Archive -Path $_.FullName -DestinationPath DyResearch-Windows.zip }
+          if (Test-Path dist) {
+              cd dist
+              $folder = Get-ChildItem | Select-Object -First 1
+              Compress-Archive -Path "$($folder.Name)\*" -DestinationPath ../DyResearch-Windows.zip
+          }
 
       - name: Zip Release (Mac)
         if: matrix.os == 'macos-latest'
-        # This moves into dist and zips the first folder found
         run: |
-          cd dist && zip -r ../DyResearch-Mac.zip ./*
+          if [ -d "dist" ]; then
+            cd dist && zip -r ../DyResearch-Mac.zip ./*
+          else
+            echo "Dist folder not found!"
+            exit 1
+          fi
 
       - name: Upload Engine Artifacts
         uses: actions/upload-artifact@v4
