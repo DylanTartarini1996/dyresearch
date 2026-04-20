@@ -1,5 +1,3 @@
-import json
-
 from enum import Enum
 from pydantic import BaseModel
 from typing import Optional
@@ -20,26 +18,6 @@ class ModelType(str, Enum):
     OPENAI = "openai"
     OLLAMA = "ollama"
     HF = "hugging-face"
-
-
-class ChunkerType(str, Enum):
-    """
-    Type of chunkers available in the toolkit
-    """
-    RECURSIVE = "recursive"
-    # PLAIN = "plain" # TODO implement plain chunker
-    # SEMANTIC = "semantic" # TODO implement SEMANTIC chunker
-
-
-class Source(BaseModel):
-    folder: str
-    # TODO add specific source configurations
-
-
-class ChunkerConf(BaseModel):
-    type: ChunkerType = "recursive"
-    chunk_size: int = 1000
-    chunk_overlap: int = 100
 
 
 class LLMConf(BaseModel):
