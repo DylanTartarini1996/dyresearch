@@ -13,6 +13,10 @@ def build():
         '--onedir',
         '--windowed',
         '--clean',
+
+        # Exclude massive chunks of torch
+        '--exclude-module=tensorboard',
+        '--exclude-module=torch.distributed',
         
         # Add the folders
         f'--add-data={os.path.join(base_dir, "app")}{os.pathsep}app',

@@ -60,7 +60,6 @@ jobs:
           uv python install 3.12
           uv venv
           uv pip install . pyinstaller
-          ls -F
           uv run python desktop_build.py
           
 
