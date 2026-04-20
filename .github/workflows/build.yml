@@ -62,13 +62,18 @@ jobs:
           uv pip install . pyinstaller
           find . -name "desktop-build.py" -exec uv run python {} \;
 
-      - name: Zip Engine (Windows)
+      # --- Packaging ---
+      - name: Zip Release (Windows)
         if: matrix.os == 'windows-latest'
-        run: Compress-Archive -Path dist/DyResearchEngine/* -DestinationPath DyResearch-Windows.zip
+        # This zips the first folder found in dist/
+        run: |
+          Get-ChildItem ./dist | Select-Object -First 1 | ForEach-Object { Compress-Archive -Path $_.FullName -DestinationPath DyResearch-Windows.zip }
 
-      - name: Zip Engine (Mac)
+      - name: Zip Release (Mac)
         if: matrix.os == 'macos-latest'
-        run: zip -r DyResearch-Mac.zip dist/DyResearchEngine/
+        # This moves into dist and zips the first folder found
+        run: |
+          cd dist && zip -r ../DyResearch-Mac.zip ./*
 
       - name: Upload Engine Artifacts
         uses: actions/upload-artifact@v4
