@@ -20,6 +20,7 @@ dependencies = [
     "litellm>=1.83.0",
     "lxml>=6.0.2",
     "pgvector>=0.4.2",
+    "platformdirs>=4.9.6",
     "psycopg[binary]>=3.1",
     "pyinstaller>=6.19.0",
     "sentence-transformers>=5.3.0",
