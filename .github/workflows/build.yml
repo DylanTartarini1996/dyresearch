@@ -2,8 +2,8 @@ name: Build DyResearch Suite
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - 'feature/obsidian-standalone'
   workflow_dispatch:
 
 jobs:
