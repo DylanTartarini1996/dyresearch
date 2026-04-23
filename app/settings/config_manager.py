@@ -12,7 +12,7 @@ from dyresearch.config import DBConfig, EmbedderConf, LLMConf, ModelType
 from dyresearch.utils.logger import get_logger
 
 # Load environment variables once at the start of config management
-load_dotenv("config.env")
+load_dotenv()
 
 logger = get_logger(__name__)
 
@@ -34,7 +34,6 @@ def get_default_db() -> DBConfig:
 class FullConfiguration(BaseModel):
     # The default config to use if a specific agent isn't configured
     default_llm: LLMConf = Field(default_factory=get_default_llm)
-    
     embedder: EmbedderConf = EmbedderConf()
     db: DBConfig = Field(default_factory=get_default_db)
 

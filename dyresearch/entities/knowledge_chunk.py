@@ -1,6 +1,6 @@
 import os
 from sqlalchemy import Column, Integer, String, Text, JSON
-from sqlalchemy.orm import declarative_base
+from . import Base
 
 # Add this check at the top of your entities file
 IS_POSTGRES = os.getenv("DB_HOST") is not None
@@ -14,8 +14,6 @@ if IS_POSTGRES:
 else:
     EmbeddingType = JSON # SQLite handles vectors as JSON/Blobs
     MetadataType = JSON  # Standard JSON for SQLite
-
-Base = declarative_base()
 
 class KnowledgeChunk(Base):
     __tablename__ = "knowledge_chunks"

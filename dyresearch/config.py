@@ -20,6 +20,11 @@ class ModelType(str, Enum):
     HF = "hugging-face"
 
 
+class DBType(str, Enum):
+    SQL_LITE = "sql_lite" 
+    POSTGRE = "postgre"
+
+
 class LLMConf(BaseModel):
     """
     Configuration for an LLM
@@ -53,8 +58,8 @@ class EmbedderConf(BaseModel):
     `api_key`: reference to the OpenAI (or Azure OpenAI) API key, if any
     `endpoint`: reference to the endpoint of the model, if any
     """
-    type: ModelType = "hf"
-    model: Optional[str] = "ibm-granite/granite-embedding-278m-multilingual"
+    type: ModelType = "google"
+    model: Optional[str] = "gemini-embedding-001"
     deployment: Optional[str] = None
     api_key: Optional[str] = None
     endpoint: Optional[str] = None
@@ -77,6 +82,7 @@ class DBConfig(BaseModel):
     `timeout`: `int`
     `url`: `str`
     """
+    db_type: DBType = "sql_lite"
     password: Optional[str] = None
     host: Optional[str] = None
     port: Optional[int] = None
@@ -84,3 +90,10 @@ class DBConfig(BaseModel):
     database: Optional[str] = None
     timeout: int=5000
     url: Optional[str] = None
+
+    def get_connection_url(self) -> str:
+        if self.url:
+            return self.url
+        if self.db_type == "postgres":
+            return f"postgresql+asyncpg://{self.user}:{self.password}@{self.host}:{self.port}/{self.database}"
+        return "sqlite+aiosqlite:///./adk_history.db"

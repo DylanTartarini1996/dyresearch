@@ -328,8 +328,8 @@ async def delete_source(title: str, tool_context: ToolContext = None) -> str:
             if not IS_POSTGRES:
                 try:
                     db = lancedb.connect("./.dyresearch_vectors")
-                    if "research_chunks" in db.table_names():
-                        table = db.open_table("research_chunks")
+                    if "knowledge_chunks" in db.table_names():
+                        table = db.open_table("knowledge_chunks")
                         # Sanitize single quotes for the LanceDB filter string
                         safe_title = title.replace("'", "''")
                         table.delete(f"source_title = '{safe_title}'")
@@ -370,8 +370,8 @@ async def delete_by_subject(subject: str) -> str:
             if not IS_POSTGRES:
                 try:
                     db = lancedb.connect("./.dyresearch_vectors")
-                    if "research_chunks" in db.table_names():
-                        table = db.open_table("research_chunks")
+                    if "knowledge_chunks" in db.table_names():
+                        table = db.open_table("knowledge_chunks")
                         table.delete(f"subject = '{target_subject}'")
                         logger.info(f"LanceDB synced: purged subject index '{target_subject}'")
                 except Exception as ve:
@@ -439,9 +439,8 @@ async def search_knowledge_base(
 
         # ---- LOCAL MODE ---- 
         else:
-            # --- BROTHER/DESKTOP MODE: Use LanceDB ---
             db = lancedb.connect("./.dyresearch_vectors")
-            table = db.open_table("research_chunks")
+            table = db.open_table("knowledge_chunks")
             
             search_query = table.search(query_vector).limit(limit)
             if subject_filter:
