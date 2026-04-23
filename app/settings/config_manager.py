@@ -1,34 +1,53 @@
+import os
 from pathlib import Path
 from typing import Dict
 
+from dotenv import load_dotenv
 from platformdirs import user_config_dir
 from pydantic import BaseModel, Field
 
 from app import APP_NAME
 
-from dyresearch.config import DBConfig, EmbedderConf, LLMConf
+from dyresearch.config import DBConfig, EmbedderConf, LLMConf, ModelType
 from dyresearch.utils.logger import get_logger
+
+# Load environment variables once at the start of config management
+load_dotenv("config.env")
 
 logger = get_logger(__name__)
 
 
+def get_default_llm() -> LLMConf:
+    return LLMConf(
+        model=os.getenv("GOOGLE_MODEL_NAME", "gemini-3.1-flash-lite-preview"),
+        type=ModelType.GOOGLE,
+        api_key=os.getenv("GOOGLE_API_KEY")
+    )
+
+
+def get_default_db() -> DBConfig:
+    return DBConfig(
+        url=os.getenv("SESSION_SERVICE_URI", "sqlite+aiosqlite:///./adk_history.db")
+    )
+
+
 class FullConfiguration(BaseModel):
     # The default config to use if a specific agent isn't configured
-    default_llm: LLMConf = LLMConf(model="gemini-3.1-flash-lite-preview", type="google")
+    default_llm: LLMConf = Field(default_factory=get_default_llm)
     
     embedder: EmbedderConf = EmbedderConf()
-    db: DBConfig = DBConfig()
+    db: DBConfig = Field(default_factory=get_default_db)
 
     # Specific configurations for each agent
     agent_configs: Dict[str, LLMConf] = Field(default_factory=lambda: {
-        "coordinator": LLMConf(model="gemini-3.1-flash-lite-preview", type="google"),
-        "professor": LLMConf(model="gemini-3.1-flash-lite-preview", type="google"),
-        "librarian": LLMConf(model="gemini-3.1-flash-lite-preview-mini", type="google"),
-        "notetaker": LLMConf(model="gemini-3.1-flash-lite-preview-mini", type="google"),
-        "researcher": LLMConf(model="gemini-3.1-flash-lite-preview-mini", type="google")
+        "coordinator": get_default_llm(),
+        "professor": get_default_llm(),
+        "librarian": get_default_llm(),
+        "notetaker": get_default_llm(),
+        "researcher": get_default_llm()
     })
 
-    def get_llm_for_agent(self, agent_name: str) -> LLMConf:
+    def get_llm_conf_for_agent(self, agent_name: str) -> LLMConf:
         """Helper to get an agent's config or fall back to default"""
         return self.agent_configs.get(agent_name, self.default_llm)
     
@@ -52,6 +71,20 @@ class ConfigManager:
     def save(self, config: FullConfiguration):
         with open(self.config_file, "w") as f:
             f.write(config.model_dump_json(indent=4))
+        self.apply_to_env(config)
+
+    def apply_to_env(self, config: FullConfiguration):
+        """Sets environment variables based on the configuration."""
+        if config.default_llm.api_key:
+            os.environ["GOOGLE_API_KEY"] = config.default_llm.api_key
+        
+        if config.db.url:
+            os.environ["SESSION_SERVICE_URI"] = config.db.url
+        
+        # Add more env mappings as needed for other providers
+        logger.info("Configuration applied to environment")
 
 
 config_manager = ConfigManager()
+# Apply initial config to env
+config_manager.apply_to_env(config_manager.load())
