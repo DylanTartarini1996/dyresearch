@@ -1,15 +1,20 @@
 import os
 from sqlalchemy import Column, Integer, String, Text, JSON
+
+from app.settings.config_manager import config_manager
 from . import Base
 
 # Add this check at the top of your entities file
-IS_POSTGRES = os.getenv("DB_HOST") is not None
+# IS_POSTGRES = os.getenv("DB_HOST") is not None
+
+current_config = config_manager.load()
+IS_POSTGRES = current_config.db.is_postgres
 
 # Swap Vector for a dummy type and JSONB for standard JSON if on SQLite
 if IS_POSTGRES:
     from pgvector.sqlalchemy import Vector
     from sqlalchemy.dialects.postgresql import JSONB
-    EmbeddingType = Vector # Match your model's dimensions
+    EmbeddingType = Vector # Match model's dimensions
     MetadataType = JSONB
 else:
     EmbeddingType = JSON # SQLite handles vectors as JSON/Blobs
@@ -26,8 +31,6 @@ class KnowledgeChunk(Base):
     source_type = Column(String, nullable=True) 
     authors = Column(String, nullable=True)
     page_or_url = Column(String, nullable=True)
-    
-    # These now use our conditional types!
     embedding = Column(EmbeddingType) 
     metadatas = Column(MetadataType, nullable=True)
     

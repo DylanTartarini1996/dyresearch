@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 from google.adk.tools.tool_context import ToolContext
 from sqlalchemy import select, delete, func
 
+from app.settings.config_manager import config_manager
 from .ingestion import ingest_and_chunk_file
 from ...entities.knowledge_chunk import KnowledgeChunk
 from ...factory.database import db_config, get_db_context
@@ -14,7 +15,8 @@ from ...utils.logger import get_logger
 
 
 logger = get_logger(__name__)
-IS_POSTGRES = os.getenv("DB_HOST") is not None
+current_config = config_manager.load()
+
 
 async def ingest_source_chunks(
     content_chunks: List[str], 
@@ -89,7 +91,7 @@ async def ingest_source_chunks(
                         chunk_id=current_idx, 
                         source_type=source_type,
                         authors=authors,
-                        embedding=vector if IS_POSTGRES else None,
+                        embedding=vector if current_config.db.is_postgres else None,
                         subject=subject.lower(),
                         embedding_model=embedder.model,
                         metadatas=metadatas
@@ -101,7 +103,7 @@ async def ingest_source_chunks(
                 await session.commit() 
 
                 # LOCAL MODE EXTRA STEP: Sync to LanceDB
-                if not IS_POSTGRES:
+                if not current_config.db.is_postgres:
                     db = lancedb.connect("./.dyresearch_vectors")
                     table_name = "knowledge_chunks"
                     
@@ -325,7 +327,7 @@ async def delete_source(title: str, tool_context: ToolContext = None) -> str:
                 return f"Could not find any source named '{title}' in the library."
 
             # 2. Vector Store Deletion (LanceDB specific)
-            if not IS_POSTGRES:
+            if not current_config.db.is_postgres:
                 try:
                     db = lancedb.connect("./.dyresearch_vectors")
                     if "knowledge_chunks" in db.table_names():
@@ -367,7 +369,7 @@ async def delete_by_subject(subject: str) -> str:
                 return f"No records found for subject '{subject}'."
 
             # 2. Vector Store Deletion (LanceDB specific)
-            if not IS_POSTGRES:
+            if not current_config.db.is_postgres:
                 try:
                     db = lancedb.connect("./.dyresearch_vectors")
                     if "knowledge_chunks" in db.table_names():
@@ -429,7 +431,7 @@ async def search_knowledge_base(
         chunks = []
 
         # ---- DOCKER / CLOUD MODE: pgvector ----
-        if IS_POSTGRES: 
+        if current_config.db.is_postgres: 
             async with get_db_context(db_config) as session:
                 stmt = select(KnowledgeChunk)
                 if subject_filter:

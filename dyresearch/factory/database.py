@@ -27,12 +27,7 @@ class DatabaseFactory:
     def __init__(self, config: DBConfig):
         # Determine if we should use Postgres or SQLite
         self.config = config
-        self.is_postgres = False
-        
-        if config.host:
-            self.is_postgres = True
-        elif config.url and not config.url.startswith("sqlite"):
-            self.is_postgres = True
+        self.is_postgres = config.is_postgres
             
         logger.info(f"DB Init - host: {config.host}, url: {config.url}, is_postgres: {self.is_postgres}")
         

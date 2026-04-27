@@ -87,3 +87,10 @@ class ConfigManager:
 config_manager = ConfigManager()
 # Apply initial config to env
 config_manager.apply_to_env(config_manager.load())
+
+def get_db_mode() -> bool:
+    """Helper to get the current DB mode without importing the whole app."""
+    try:
+        return config_manager.load().db.is_postgres
+    except Exception:
+        return False
