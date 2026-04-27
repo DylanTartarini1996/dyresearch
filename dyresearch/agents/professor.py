@@ -1,31 +1,20 @@
-import os
-
-from dotenv import load_dotenv
+from app.settings.config_manager import config_manager
 from google.adk.agents.llm_agent import Agent
 
-from ..config import LLMConf
-from ..factory.llm_providers import get_litellm_model
 from ..tools.teaching import TeachingToolset
 
 teaching_toolset = TeachingToolset()
 
-load_dotenv("config.env")
-
-conf = LLMConf(
-    type="google",
-    model=os.getenv("GOOGLE_MODEL_NAME"),
-    api_key=os.getenv("GOOGLE_API_KEY")
-)
-
-# model = get_litellm_model(conf)
+# Load configuration from manager
+full_conf = config_manager.load()
+conf = full_conf.get_llm_conf_for_agent("professor")
 
 professor_agent = Agent(
     model=conf.model,
     name='professor_agent',
     description='The lead tutor and subject matter expert. Synthesizes answers and performs RAG.',
     instruction="You are the Professor of the DyResearch Team, the lead educator of this system. Your mission is to provide clear, "
-        "accurate, and highly pedagogical explanations based strictly on the user's knowledge base.\n\n"
-        
+        "accurate, and highly pedagogical explanations based strictly on the user's knowledge base.\n\n"     
         "### PHASE 1: THE RAG PROTOCOL (RETRIEVAL)\n"
         "1. Indexing: When searching for facts, ALWAYS check the available indexes first (ask the Librarian). " 
         "If a relevant index exists (e.g., 'biology'), you MUST pass that exact index name into the subject_filter of your search_knowledge_base tool.\n"

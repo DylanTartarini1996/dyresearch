@@ -1,7 +1,5 @@
-import json
-
 from enum import Enum
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional
 
 from .utils.logger import get_logger
@@ -22,24 +20,9 @@ class ModelType(str, Enum):
     HF = "hugging-face"
 
 
-class ChunkerType(str, Enum):
-    """
-    Type of chunkers available in the toolkit
-    """
-    RECURSIVE = "recursive"
-    # PLAIN = "plain" # TODO implement plain chunker
-    # SEMANTIC = "semantic" # TODO implement SEMANTIC chunker
-
-
-class Source(BaseModel):
-    folder: str
-    # TODO add specific source configurations
-
-
-class ChunkerConf(BaseModel):
-    type: ChunkerType = "recursive"
-    chunk_size: int = 1000
-    chunk_overlap: int = 100
+class DBType(str, Enum):
+    SQL_LITE = "sql_lite" 
+    POSTGRE = "postgre"
 
 
 class LLMConf(BaseModel):
@@ -54,6 +37,7 @@ class LLMConf(BaseModel):
     `api_key`: reference to the OpenAI (or Groq, or Azure OpenAI) API key, if any
     `endpoint`: reference to the endpoint of the model, if any
     """
+    model_config = ConfigDict(use_enum_values=True)
     model: str
     temperature: float = 0.0
     type: ModelType="google"
@@ -75,8 +59,9 @@ class EmbedderConf(BaseModel):
     `api_key`: reference to the OpenAI (or Azure OpenAI) API key, if any
     `endpoint`: reference to the endpoint of the model, if any
     """
-    type: ModelType = "hf"
-    model: Optional[str] = "ibm-granite/granite-embedding-278m-multilingual"
+    model_config = ConfigDict(use_enum_values=True)
+    type: ModelType = "google"
+    model: Optional[str] = "gemini-embedding-001"
     deployment: Optional[str] = None
     api_key: Optional[str] = None
     endpoint: Optional[str] = None
@@ -99,6 +84,8 @@ class DBConfig(BaseModel):
     `timeout`: `int`
     `url`: `str`
     """
+    model_config = ConfigDict(use_enum_values=True)
+    db_type: DBType = "sql_lite"
     password: Optional[str] = None
     host: Optional[str] = None
     port: Optional[int] = None
@@ -106,3 +93,19 @@ class DBConfig(BaseModel):
     database: Optional[str] = None
     timeout: int=5000
     url: Optional[str] = None
+
+    @property
+    def is_postgres(self) -> bool:
+        """Determines if we are in Postgres mode based on the URL or Host."""
+        if self.url and self.url.startswith("postgresql"):
+            return True
+        if self.host and not self.url:
+            return True
+        return False
+
+    def get_connection_url(self) -> str:
+        if self.url:
+            return self.url
+        if self.db_type == "postgres":
+            return f"postgresql+asyncpg://{self.user}:{self.password}@{self.host}:{self.port}/{self.database}"
+        return "sqlite+aiosqlite:///./adk_history.db"

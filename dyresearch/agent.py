@@ -1,26 +1,13 @@
-import os
-
-from dotenv import load_dotenv
+from app.settings.config_manager import config_manager
 from google.adk.agents.llm_agent import Agent
 
 from .agents import librarian_agent, note_taking_agent, professor_agent, research_agent
 from .callbacks import initialize_study_state
-from .config import LLMConf
-from .factory.llm_providers import get_litellm_model
 
 
-
-load_dotenv("config.env")
-
-
-conf = LLMConf(
-    type="google",
-    model=os.getenv("GOOGLE_MODEL_NAME"),
-    api_key=os.getenv("GOOGLE_API_KEY")
-)
-
-# model = get_litellm_model(conf)
-
+# Load configuration from manager (which includes env fallbacks)
+full_conf = config_manager.load()
+conf = full_conf.get_llm_conf_for_agent("coordinator")
 
 root_agent = Agent(
     model=conf.model,

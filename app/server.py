@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import __routers__
 
+from dyresearch.factory.database import initialize_database
 from dyresearch.tools.knowledge_base.ingestion import docling_executor
 from dyresearch.utils.logger import get_logger
 
@@ -13,6 +14,12 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # --- Startup Logic ---
+    try:
+        await initialize_database()
+        logger.info("Database initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize database: {e}")
+        
     yield 
     # --- Shutdown Logic ---
     logger.info("Shutting down documents Process Pool...")
