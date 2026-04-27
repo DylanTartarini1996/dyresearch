@@ -426,18 +426,30 @@ async def search_knowledge_base(
 
     try:
         query_vector = await embedder.embed_query(query)
+        chunks = []
 
         # ---- DOCKER / CLOUD MODE: pgvector ----
         if IS_POSTGRES: 
             async with get_db_context(db_config) as session:
                 stmt = select(KnowledgeChunk)
-                if subject_filter != "":
+                if subject_filter:
                     stmt = stmt.where(KnowledgeChunk.subject == subject_filter.lower())
                 stmt = stmt.order_by(KnowledgeChunk.embedding.cosine_distance(query_vector)).limit(limit)
                 result = await session.execute(stmt)
                 chunks = result.scalars().all()
+                
+                if retrieve_adjacent_chunks and chunks:
+                    final_chunks = list(chunks)
+                    for chunk in chunks:
+                        neighbor_stmt = select(KnowledgeChunk).where(
+                            KnowledgeChunk.source_title == chunk.source_title,
+                            KnowledgeChunk.chunk_id.in_([chunk.chunk_id - 1, chunk.chunk_id + 1])
+                        )
+                        neighbor_result = await session.execute(neighbor_stmt)
+                        final_chunks.extend(neighbor_result.scalars().all())
+                    chunks = final_chunks
 
-        # ---- LOCAL MODE ---- 
+        # ---- LOCAL MODE: LanceDB ---- 
         else:
             db = lancedb.connect("./.dyresearch_vectors")
             table = db.open_table("knowledge_chunks")
@@ -447,57 +459,50 @@ async def search_knowledge_base(
                 search_query = search_query.where(f"subject = '{subject_filter.lower()}'")
             
             results = search_query.to_list()
-            
-            # Convert LanceDB dicts back into KnowledgeChunk-like objects for the Professor
+            # FIX: Ensure chunk_id and id are captured for neighbors/dedup
             chunks = [
                 KnowledgeChunk(
+                    id=r.get("id"),
                     text=r["text"], 
-                    source_title=r["source_title"]
+                    source_title=r["source_title"],
+                    chunk_id=r.get("chunk_id") 
                 ) for r in results
             ]
 
+            if retrieve_adjacent_chunks and chunks:
+                final_chunks = list(chunks)
+                for chunk in chunks:
+                    if chunk.chunk_id is not None:
+                        # Query LanceDB for the neighbors
+                        neighbors = table.search().where(
+                            f"source_title = '{chunk.source_title}' AND chunk_id IN ({chunk.chunk_id - 1}, {chunk.chunk_id + 1})"
+                        ).to_list()
+                        final_chunks.extend([KnowledgeChunk(**n) for n in neighbors])
+                chunks = final_chunks
+
         if not chunks:
-            folder_info = f" in the '{subject_filter}' index" if subject_filter != "" else ""
-            return f"I searched the library but found no relevant documents{folder_info}."
+            return f"I searched the library but found no relevant documents."
         
         logger.info(f"Retrieved {len(chunks)} Chunks")
-        final_chunks = list(chunks)
-            
 
-        # Expanded Retrieval Logic
-        if retrieve_adjacent_chunks:
-            logger.info("Expanding search to adjacent chunks...")
+        # ---- DEDUPLICATION & SORTING ----
+        # Use ID if available, otherwise fallback to text hash
+        unique_chunks = {getattr(c, 'id', hash(c.text)): c for c in chunks}.values()
+        sorted_chunks = sorted(unique_chunks, key=lambda x: (x.source_title, x.chunk_id or 0))
 
-            for chunk in chunks:
-                # Logic: Find where source matches and index is i-1 or i+1
-                neighbor_stmt = select(KnowledgeChunk).where(
-                    KnowledgeChunk.source_title == chunk.source_title,
-                    KnowledgeChunk.chunk_id.in_([chunk.chunk_id - 1, chunk.chunk_id + 1])
-                )
-                neighbor_result = await session.execute(neighbor_stmt)
-                neighbors = neighbor_result.scalars().all()
-                final_chunks.extend(neighbors)
+        # ---- FORMATTING ----
+        logger.info(f"Returning {len(sorted_chunks)} Chunks to Agent")
+        formatted_results = [f"### Knowledge Base Results (Adjacent Context: {'On' if retrieve_adjacent_chunks else 'Off'}):"]
+        
+        current_source = ""
+        for chunk in sorted_chunks:
+            if chunk.source_title != current_source:
+                formatted_results.append(f"\n--- From: **{chunk.source_title}** ---")
+                current_source = chunk.source_title
+            formatted_results.append(f"> ... {chunk.text.strip()} ...")
 
-            # Deduplication and Re-ordering
-            # Use a dict to dedup by ID, then sort by source and sequence for readability
-            unique_chunks = {c.id: c for c in final_chunks}.values()
-            final_chunks = sorted(unique_chunks, key=lambda x: (x.source_title, x.chunk_id))
-
-            logger.info(f"Retrieved {len(final_chunks)} Chunks (Base hits: {len(chunks)})")
-
-            # Format the response with clear citations 
-            formatted_results = [f"### Knowledge Base Results (Adjacent Context: {'On' if retrieve_adjacent_chunks else 'Off'}):"]
-            
-            current_source = ""
-            for chunk in final_chunks:
-                # Group by source title visually
-                if chunk.source_title != current_source:
-                    formatted_results.append(f"\n--- From: **{chunk.source_title}** ---")
-                    current_source = chunk.source_title
-                formatted_results.append(f"> ... {chunk.text.strip()} ...")
-
-            return "\n".join(formatted_results)
+        return "\n".join(formatted_results)
 
     except Exception as e:
-        logger.warning(f"An error occured: {e}")
+        logger.error(f"Search Error: {e}", exc_info=True)
         return f"An error occurred during the search: {str(e)}"
