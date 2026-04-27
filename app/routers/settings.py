@@ -15,6 +15,8 @@ async def get_settings():
     for agent in config.agent_configs.values():
         if agent.api_key:
             agent.api_key = "sk-..." + agent.api_key[-4:]
+    if config.embedder.api_key:
+        config.embedder.api_key = "sk-..." + config.embedder.api_key[-4:]
     return config
 
 @settings_router.post("")

@@ -31,10 +31,18 @@ def get_default_db() -> DBConfig:
     )
 
 
+def get_default_embedder() -> EmbedderConf: 
+    return EmbedderConf(
+        type=os.getenv("EMBEDDINGS_TYPE", "google"),
+        model=os.getenv("EMBEDDINGS_MODEL_NAME", "gemini-embedding-001"),
+        api_key=os.getenv("EMBEDDINGS_API_KEY") 
+    )
+
+
 class FullConfiguration(BaseModel):
     # The default config to use if a specific agent isn't configured
     default_llm: LLMConf = Field(default_factory=get_default_llm)
-    embedder: EmbedderConf = EmbedderConf()
+    embedder: EmbedderConf = Field(default_factory=get_default_embedder)
     db: DBConfig = Field(default_factory=get_default_db)
 
     # Specific configurations for each agent
@@ -79,6 +87,10 @@ class ConfigManager:
         
         if config.db.url:
             os.environ["SESSION_SERVICE_URI"] = config.db.url
+
+        if config.embedder.api_key:
+            os.environ["EMBEDDINGS_API_KEY"] = config.embedder.api_key
+
         
         # Add more env mappings as needed for other providers
         logger.info("Configuration applied to environment")
