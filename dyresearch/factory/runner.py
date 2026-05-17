@@ -3,6 +3,7 @@ import os
 from google.adk.runners import Runner
 from google.adk.sessions.database_session_service import DatabaseSessionService
 
+from app import APP_NAME
 from dyresearch.agent import root_agent
 
 
@@ -14,7 +15,7 @@ def get_session_service():
 
 def create_runner():
     return Runner(
-        app_name="DyResearch",
+        app_name=APP_NAME,
         agent=root_agent,
         session_service=get_session_service()
     )

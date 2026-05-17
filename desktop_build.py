@@ -2,9 +2,9 @@ import PyInstaller.__main__
 import os
 import sys
 
-base_dir = os.path.abspath(os.path.dirname(__file__))
+from app import APP_NAME
 
-APP_NAME = "DyResearchEngine"
+base_dir = os.path.abspath(os.path.dirname(__file__))
 
 def build():
     params = [

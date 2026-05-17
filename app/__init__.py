@@ -1,1 +1,1 @@
-APP_NAME = "DyResearchEngine"
+APP_NAME = "DyResearch"
