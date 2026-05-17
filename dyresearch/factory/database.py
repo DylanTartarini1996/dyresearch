@@ -60,6 +60,7 @@ class DatabaseFactory:
             if self.is_postgres:
                 try:
                     await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+                    await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm;"))
                     logger.info("Verified pgvector existence")
                 except Exception as e:
                     logger.warning(f"Could not create pgvector extension: {e}")

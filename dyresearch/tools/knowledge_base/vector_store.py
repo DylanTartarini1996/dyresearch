@@ -10,7 +10,7 @@ from app.settings.config_manager import config_manager
 from .ingestion import ingest_and_chunk_file
 from ...entities.knowledge_chunk import KnowledgeChunk
 from ...factory.database import db_config, get_db_context
-from ...factory.embeddings import BaseEmbedder, embedder_conf, get_embeddings
+from ...factory.embeddings import BaseEmbedder, get_embeddings
 from ...utils.logger import get_logger
 
 
@@ -58,7 +58,7 @@ async def ingest_source_chunks(
         logger.error(error_no_chunks)
         return error_no_chunks
     
-    embedder: BaseEmbedder = get_embeddings(embedder_conf)
+    embedder: BaseEmbedder = get_embeddings(config_manager.load().embedder)
 
     if not embedder:
         error_no_embedder = "❌ Error: No content Embeddings model available."
@@ -422,7 +422,7 @@ async def search_knowledge_base(
     grouped by source document with full citations (Source Title and Authors). 
     Returns a "No results found" message if the search yields no hits.
     """
-    embedder = get_embeddings(embedder_conf)
+    embedder = get_embeddings(config_manager.load().embedder)
     if not embedder:
         return "Error: Embedder not configured."
 

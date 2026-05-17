@@ -98,7 +98,7 @@ async def _fuzzy_search_postgres(db_session, search_term: str) -> List:
 
     result = await db_session.execute(
         stmt, 
-        {"search_term": search_term, "threshold": 0.5} 
+        {"search_term": search_term, "threshold": 0.3} 
     )
     return result.scalars().all()
 
@@ -115,7 +115,7 @@ async def _fuzzy_search_sqlite(db_session, search_term: str) -> List:
     for session in all_sessions:
         # Rapidfuzz ratio returns 0-100
         score = fuzz.ratio(session.id, search_term)
-        if score > 50:  # Rough equivalent to the 0.5 pg_trgm threshold
+        if score > 30:  # Rough equivalent to the 0.3 pg_trgm threshold
             matches.append((score, session))
             
     matches.sort(key=lambda x: x[0], reverse=True)
