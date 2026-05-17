@@ -118,6 +118,9 @@ var HistoryView = class extends import_obsidian.ItemView {
   // Chat state
   chatOffset = 0;
   chatLimit = 10;
+  // Search Properties
+  searchQuery = "";
+  isFuzzySearch = false;
   getViewType() {
     return VIEW_TYPE_HISTORY;
   }
@@ -171,13 +174,51 @@ var HistoryView = class extends import_obsidian.ItemView {
     closeBtn.onClickEvent(() => {
       this.app.workspace.rightSplit.collapse();
     });
+    const searchContainer = container.createDiv({ cls: "history-search-container" });
+    const searchInput = searchContainer.createEl("input", {
+      type: "text",
+      placeholder: "Search sessions...",
+      value: this.searchQuery,
+      cls: "history-search-input"
+    });
+    const fuzzySetting = searchContainer.createDiv({ cls: "history-fuzzy-toggle" });
+    const fuzzyCheckbox = fuzzySetting.createEl("input", {
+      type: "checkbox",
+      id: "fuzzy-search-checkbox"
+    });
+    fuzzyCheckbox.checked = this.isFuzzySearch;
+    const fuzzyLabel = fuzzySetting.createEl("label", {
+      text: "Fuzzy",
+      attr: { for: "fuzzy-search-checkbox" }
+    });
+    searchInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        this.searchQuery = searchInput.value.trim();
+        this.isFuzzySearch = fuzzyCheckbox.checked;
+        this.chatOffset = 0;
+        list.empty();
+        loadChats();
+      }
+    });
+    searchInput.addEventListener("input", () => {
+      if (searchInput.value.trim() === "" && this.searchQuery !== "") {
+        this.searchQuery = "";
+        this.chatOffset = 0;
+        list.empty();
+        loadChats();
+      }
+    });
     const list = container.createDiv({ cls: "history-list" });
     const footer = container.createDiv({ cls: "history-footer" });
-    this.chatOffset = 0;
     const loadChats = async () => {
       const loadingText = list.createEl("p", { text: "Loading sessions...", cls: "loading-text" });
       try {
-        const url = `http://localhost:8000/history/${this.plugin.userId}?limit=${this.chatLimit}&offset=${this.chatOffset}`;
+        let url = "";
+        if (this.searchQuery) {
+          url = `http://localhost:8000/sessions/search?user_id=${this.plugin.userId}&q=${encodeURIComponent(this.searchQuery)}&fuzzy=${this.isFuzzySearch}`;
+        } else {
+          url = `http://localhost:8000/history/${this.plugin.userId}?limit=${this.chatLimit}&offset=${this.chatOffset}`;
+        }
         const response = await fetch(url);
         const data = await response.json();
         loadingText.remove();
@@ -262,16 +303,25 @@ var HistoryView = class extends import_obsidian.ItemView {
             }
           });
         });
-        this.chatOffset += data.sessions.length;
         footer.empty();
-        if (this.chatOffset < data.total) {
-          const loadMoreBtn = footer.createEl("button", {
-            text: "Load Older Chats",
-            cls: "dy-load-more-btn"
-          });
-          loadMoreBtn.onClickEvent(() => loadChats());
-        } else if (data.total > 0) {
-          footer.createEl("p", { text: "End of history", cls: "text-muted" });
+        if (this.searchQuery) {
+          this.chatOffset = data.sessions.length;
+          if (data.sessions.length === 0) {
+            list.createEl("p", { text: "No matching sessions found.", cls: "text-muted" });
+          } else {
+            footer.createEl("p", { text: `Found ${data.sessions.length} matches`, cls: "text-muted" });
+          }
+        } else {
+          this.chatOffset += data.sessions.length;
+          if (this.chatOffset < data.total) {
+            const loadMoreBtn = footer.createEl("button", {
+              text: "Load Older Chats",
+              cls: "dy-load-more-btn"
+            });
+            loadMoreBtn.onClickEvent(() => loadChats());
+          } else if (data.total > 0) {
+            footer.createEl("p", { text: "End of history", cls: "text-muted" });
+          }
         }
       } catch (err) {
         loadingText.setText("Failed to load history.");

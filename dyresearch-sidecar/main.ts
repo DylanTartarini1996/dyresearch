@@ -191,6 +191,10 @@ export class HistoryView extends ItemView {
     private chatOffset = 0;
     private readonly chatLimit = 10;
 
+    // Search Properties
+    private searchQuery = "";
+    private isFuzzySearch = false;
+
     constructor(leaf: WorkspaceLeaf, private plugin: DyResearchPlugin) {
         super(leaf);
     }
@@ -253,17 +257,65 @@ export class HistoryView extends ItemView {
             this.app.workspace.rightSplit.collapse();
         });
 
+        // --- NEW: Search Bar Interface ---
+        const searchContainer = container.createDiv({ cls: 'history-search-container' });
+        const searchInput = searchContainer.createEl("input", {
+            type: "text",
+            placeholder: "Search sessions...",
+            value: this.searchQuery,
+            cls: "history-search-input"
+        });
+
+        const fuzzySetting = searchContainer.createDiv({ cls: 'history-fuzzy-toggle' });
+        const fuzzyCheckbox = fuzzySetting.createEl("input", {
+            type: "checkbox",
+            id: "fuzzy-search-checkbox"
+        });
+        fuzzyCheckbox.checked = this.isFuzzySearch;
+        const fuzzyLabel = fuzzySetting.createEl("label", {
+            text: "Fuzzy",
+            attr: { for: "fuzzy-search-checkbox" }
+        });
+
+        // Execute search on pressing Enter
+        searchInput.addEventListener('keydown', (e: KeyboardEvent) => {
+            if (e.key === 'Enter') {
+                this.searchQuery = searchInput.value.trim();
+                this.isFuzzySearch = fuzzyCheckbox.checked;
+                this.chatOffset = 0; // Reset offset for clean lists
+                list.empty();
+                loadChats();
+            }
+        });
+
+        // Auto-clear search view if the user manually empties the input field
+        searchInput.addEventListener('input', () => {
+            if (searchInput.value.trim() === "" && this.searchQuery !== "") {
+                this.searchQuery = "";
+                this.chatOffset = 0;
+                list.empty();
+                loadChats();
+            }
+        });
+
         // Session List Container
         const list = container.createDiv({ cls: "history-list" });
         const footer = container.createDiv({ cls: "history-footer" });
-        this.chatOffset = 0; // Reset offset for fresh tab load
+        // Offset is intentionally managed dynamically by user actions
+        //this.chatOffset = 0; // Reset offset for fresh tab load
 
         // Loading Logic for chats
         const loadChats = async () => {
             const loadingText = list.createEl("p", { text: "Loading sessions...", cls: "loading-text" });
 
             try {
-                const url = `http://localhost:8000/history/${this.plugin.userId}?limit=${this.chatLimit}&offset=${this.chatOffset}`;
+                // Determine target route based on the search query state
+                let url = "";
+                if (this.searchQuery) {
+                    url = `http://localhost:8000/sessions/search?user_id=${this.plugin.userId}&q=${encodeURIComponent(this.searchQuery)}&fuzzy=${this.isFuzzySearch}`;
+                } else {
+                    url = `http://localhost:8000/history/${this.plugin.userId}?limit=${this.chatLimit}&offset=${this.chatOffset}`;
+                }
                 const response = await fetch(url);
                 const data = await response.json();
                 
@@ -379,17 +431,26 @@ export class HistoryView extends ItemView {
                     });
                 });
                 
-                this.chatOffset += data.sessions.length;
-                // Handle "Load More" Button
+                // --- Footer Navigation Configurations ---
                 footer.empty();
-                if (this.chatOffset < data.total) {
-                    const loadMoreBtn = footer.createEl("button", { 
-                        text: "Load Older Chats", 
-                        cls: "dy-load-more-btn" 
-                    });
-                    loadMoreBtn.onClickEvent(() => loadChats());
-                } else if (data.total > 0) {
-                    footer.createEl("p", { text: "End of history", cls: "text-muted" });
+                if (this.searchQuery) {
+                    this.chatOffset = data.sessions.length; // Lock out further pagination steps during filters
+                    if (data.sessions.length === 0) {
+                        list.createEl("p", { text: "No matching sessions found.", cls: "text-muted" });
+                    } else {
+                        footer.createEl("p", { text: `Found ${data.sessions.length} matches`, cls: "text-muted" });
+                    }
+                } else {
+                    this.chatOffset += data.sessions.length;
+                    if (this.chatOffset < data.total) {
+                        const loadMoreBtn = footer.createEl("button", { 
+                            text: "Load Older Chats", 
+                            cls: "dy-load-more-btn" 
+                        });
+                        loadMoreBtn.onClickEvent(() => loadChats());
+                    } else if (data.total > 0) {
+                        footer.createEl("p", { text: "End of history", cls: "text-muted" });
+                    }
                 }
 
             } catch (err) {

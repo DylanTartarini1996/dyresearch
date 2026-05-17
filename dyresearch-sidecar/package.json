@@ -15,6 +15,7 @@
     "esbuild": "0.20.1",
     "obsidian": "latest",
     "tslib": "latest",
-    "typescript": "latest"
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3"
   }
 }
