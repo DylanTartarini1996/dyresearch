@@ -1,6 +1,181 @@
-import { App, Plugin, Modal, MarkdownRenderer, ItemView, WorkspaceLeaf, setIcon, Notice } from 'obsidian';
+import { App, Plugin, Modal, MarkdownRenderer, ItemView, WorkspaceLeaf, setIcon, Notice, PluginSettingTab, Setting } from 'obsidian';
 
 export const VIEW_TYPE_HISTORY = "dyresearch-history-view";
+
+export interface LLMConf {
+    model: string;
+    temperature: number;
+    type: string;
+    api_key?: string;
+    endpoint?: string;
+}
+
+export interface EmbedderConf {
+    type: string;
+    model?: string;
+    api_key?: string;
+}
+
+export interface DBConfig {
+    host?: string;
+    port?: number;
+    user?: string;
+    password?: string;
+    database?: string;
+    url?: string;
+}
+
+export interface FullConfiguration {
+    default_llm: LLMConf;
+    agent_configs: Record<string, LLMConf>;
+    embedder: EmbedderConf;
+    db: DBConfig;
+}
+
+
+class DyResearchSettingTab extends PluginSettingTab {
+    plugin: DyResearchPlugin;
+    config: FullConfiguration | null = null;
+
+    constructor(app: App, plugin: DyResearchPlugin) {
+        super(app, plugin);
+        this.plugin = plugin;
+    }
+
+    async display(): Promise<void> {
+        const { containerEl } = this;
+        containerEl.empty();
+
+        containerEl.createEl('h2', { text: 'DyResearch Engine Settings' });
+
+        // 1. Fetch current settings from FastAPI
+        if (!this.config) {
+            try {
+                const response = await fetch('http://localhost:8000/settings');
+                this.config = await response.json();
+            } catch (e) {
+                containerEl.createEl('p', { text: '❌ Could not connect to Python Engine.', cls: 'error-text' });
+                return;
+            }
+        }
+
+        const config = this.config!;
+
+        // --- SECTION: DEFAULT LLM ---
+        new Setting(containerEl)
+            .setName('Default LLM Model')
+            .setDesc('Fallback model for all agents')
+            .addText(text => text
+                .setValue(config.default_llm.model)
+                .onChange(async (val) => { config.default_llm.model = val; }));
+
+        new Setting(containerEl)
+            .setName('Default API Key')
+            .setDesc('API key for the default provider')
+            .addText(text => text
+                .setPlaceholder('sk-...')
+                .setValue(config.default_llm.api_key || '')
+                .onChange(async (val) => { config.default_llm.api_key = val; }));
+
+        // --- SECTION: AGENT SPECIFIC ---
+        containerEl.createEl('h3', { text: 'Agent Configurations' });
+        const agents = ['coordinator', 'professor', 'librarian', 'notetaker', 'researcher'];
+        
+        agents.forEach(agentName => {
+            const agentCfg = config.agent_configs[agentName];
+            const details = containerEl.createEl('details');
+            const summary = details.createEl('summary', { text: `Settings for ${agentName.toUpperCase()}` });
+            
+            new Setting(details)
+                .setName('Model')
+                .addText(t => t.setValue(agentCfg.model).onChange(v => agentCfg.model = v));
+            
+            new Setting(details)
+                .setName('Type')
+                .addDropdown(d => d
+                    .addOptions({ 'openai': 'OpenAI', 'google': 'Google', 'groq': 'Groq', 'ollama': 'Ollama' })
+                    .setValue(agentCfg.type)
+                    .onChange(v => agentCfg.type = v));
+
+            new Setting(details)
+                .setName('API Key')
+                .addText(t => t.setPlaceholder('Leave blank to use default').setValue(agentCfg.api_key || '').onChange(v => agentCfg.api_key = v));
+        });
+
+        // --- SECTION: EMBEDDER ---
+        containerEl.createEl('h3', { text: 'Embedder Configuration' });
+
+        new Setting(containerEl)
+            .setName('Embedder Type')
+            .setDesc('The provider used to generate vector embeddings')
+            .addDropdown(d => d
+                .addOptions({ 
+                    'openai': 'OpenAI', 
+                    'google': 'Google (Gemini)', 
+                    'huggingface': 'HuggingFace (Local)',
+                    'ollama': 'Ollama' 
+                })
+                .setValue(config.embedder.type)
+                .onChange(v => config.embedder.type = v));
+
+        new Setting(containerEl)
+            .setName('Embedder Model')
+            .setDesc('Specific model for embeddings (e.g., gemini-embedding-001)')
+            .addText(t => t
+                .setValue(config.embedder.model || '')
+                .onChange(v => config.embedder.model = v));
+
+        new Setting(containerEl)
+            .setName('Embedder API Key')
+            .setDesc('Leave blank to use Default API Key')
+            .addText(t => t
+                .setPlaceholder('sk-...')
+                .setValue(config.embedder.api_key || '')
+                .onChange(v => config.embedder.api_key = v));
+
+
+        // --- SECTION: DATABASE ---
+        containerEl.createEl('h3', { text: 'Database (Relational & Vector)' });
+        
+        new Setting(containerEl)
+            .setName('DB Connection URL')
+            .setDesc('SQLite path or Postgres connection string')
+            .addText(text => text
+                .setPlaceholder('sqlite:///./adk_history.db')
+                .setValue(config.db.url || '')
+                .onChange(async (val) => { config.db.url = val; }));
+
+        // --- SAVE BUTTON ---
+        const btnDiv = containerEl.createDiv({ cls: 'settings-save-container' });
+        const saveBtn = btnDiv.createEl('button', { text: 'Save & Reload Engine', cls: 'mod-cta' });
+        
+        saveBtn.onclick = async () => {
+            saveBtn.disabled = true;
+            saveBtn.setText('Saving...');
+            
+            try {
+                const response = await fetch('http://localhost:8000/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(this.config)
+                });
+                
+                if (response.ok) {
+                    new Notice('Settings saved successfully!');
+                    this.config = null; // Reset so next open fetches fresh
+                    this.display(); 
+                } else {
+                    throw new Error();
+                }
+            } catch (e) {
+                new Notice('Failed to save settings.');
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.setText('Save & Reload Engine');
+            }
+        };
+    }
+}
 
 interface ChatResponse {
     message: string; 
@@ -15,6 +190,10 @@ export class HistoryView extends ItemView {
     // Chat state
     private chatOffset = 0;
     private readonly chatLimit = 10;
+
+    // Search Properties
+    private searchQuery = "";
+    private isFuzzySearch = false;
 
     constructor(leaf: WorkspaceLeaf, private plugin: DyResearchPlugin) {
         super(leaf);
@@ -78,17 +257,65 @@ export class HistoryView extends ItemView {
             this.app.workspace.rightSplit.collapse();
         });
 
+        // --- NEW: Search Bar Interface ---
+        const searchContainer = container.createDiv({ cls: 'history-search-container' });
+        const searchInput = searchContainer.createEl("input", {
+            type: "text",
+            placeholder: "Search sessions...",
+            value: this.searchQuery,
+            cls: "history-search-input"
+        });
+
+        const fuzzySetting = searchContainer.createDiv({ cls: 'history-fuzzy-toggle' });
+        const fuzzyCheckbox = fuzzySetting.createEl("input", {
+            type: "checkbox",
+            id: "fuzzy-search-checkbox"
+        });
+        fuzzyCheckbox.checked = this.isFuzzySearch;
+        const fuzzyLabel = fuzzySetting.createEl("label", {
+            text: "Fuzzy",
+            attr: { for: "fuzzy-search-checkbox" }
+        });
+
+        // Execute search on pressing Enter
+        searchInput.addEventListener('keydown', (e: KeyboardEvent) => {
+            if (e.key === 'Enter') {
+                this.searchQuery = searchInput.value.trim();
+                this.isFuzzySearch = fuzzyCheckbox.checked;
+                this.chatOffset = 0; // Reset offset for clean lists
+                list.empty();
+                loadChats();
+            }
+        });
+
+        // Auto-clear search view if the user manually empties the input field
+        searchInput.addEventListener('input', () => {
+            if (searchInput.value.trim() === "" && this.searchQuery !== "") {
+                this.searchQuery = "";
+                this.chatOffset = 0;
+                list.empty();
+                loadChats();
+            }
+        });
+
         // Session List Container
         const list = container.createDiv({ cls: "history-list" });
         const footer = container.createDiv({ cls: "history-footer" });
-        this.chatOffset = 0; // Reset offset for fresh tab load
+        // Offset is intentionally managed dynamically by user actions
+        //this.chatOffset = 0; // Reset offset for fresh tab load
 
         // Loading Logic for chats
         const loadChats = async () => {
             const loadingText = list.createEl("p", { text: "Loading sessions...", cls: "loading-text" });
 
             try {
-                const url = `http://localhost:8000/history/${this.plugin.userId}?limit=${this.chatLimit}&offset=${this.chatOffset}`;
+                // Determine target route based on the search query state
+                let url = "";
+                if (this.searchQuery) {
+                    url = `http://localhost:8000/sessions/search?user_id=${this.plugin.userId}&q=${encodeURIComponent(this.searchQuery)}&fuzzy=${this.isFuzzySearch}`;
+                } else {
+                    url = `http://localhost:8000/history/${this.plugin.userId}?limit=${this.chatLimit}&offset=${this.chatOffset}`;
+                }
                 const response = await fetch(url);
                 const data = await response.json();
                 
@@ -204,17 +431,26 @@ export class HistoryView extends ItemView {
                     });
                 });
                 
-                this.chatOffset += data.sessions.length;
-                // Handle "Load More" Button
+                // --- Footer Navigation Configurations ---
                 footer.empty();
-                if (this.chatOffset < data.total) {
-                    const loadMoreBtn = footer.createEl("button", { 
-                        text: "Load Older Chats", 
-                        cls: "dy-load-more-btn" 
-                    });
-                    loadMoreBtn.onClickEvent(() => loadChats());
-                } else if (data.total > 0) {
-                    footer.createEl("p", { text: "End of history", cls: "text-muted" });
+                if (this.searchQuery) {
+                    this.chatOffset = data.sessions.length; // Lock out further pagination steps during filters
+                    if (data.sessions.length === 0) {
+                        list.createEl("p", { text: "No matching sessions found.", cls: "text-muted" });
+                    } else {
+                        footer.createEl("p", { text: `Found ${data.sessions.length} matches`, cls: "text-muted" });
+                    }
+                } else {
+                    this.chatOffset += data.sessions.length;
+                    if (this.chatOffset < data.total) {
+                        const loadMoreBtn = footer.createEl("button", { 
+                            text: "Load Older Chats", 
+                            cls: "dy-load-more-btn" 
+                        });
+                        loadMoreBtn.onClickEvent(() => loadChats());
+                    } else if (data.total > 0) {
+                        footer.createEl("p", { text: "End of history", cls: "text-muted" });
+                    }
                 }
 
             } catch (err) {
@@ -403,6 +639,9 @@ export default class DyResearchPlugin extends Plugin {
     public userId: string = 'dyresearch_plugin_user';
 
     async onload() {
+
+        this.addSettingTab(new DyResearchSettingTab(this.app, this));
+
         this.registerView(VIEW_TYPE_HISTORY, (leaf) => new HistoryView(leaf, this));
 
         this.addRibbonIcon('bot', 'DyResearch Chat', () => {

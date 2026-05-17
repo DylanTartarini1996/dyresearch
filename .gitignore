@@ -1,3 +1,5 @@
+adk_history.db
+*.dyresearch_vectors
 *obsidian
 *node_modules/
 *.venv/

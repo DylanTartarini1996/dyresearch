@@ -1,17 +1,21 @@
 import json
-from typing import Dict, List, Optional
+import os
+import lancedb
 
+from typing import Dict, List, Optional
 from google.adk.tools.tool_context import ToolContext
 from sqlalchemy import select, delete, func
 
+from app.settings.config_manager import config_manager
 from .ingestion import ingest_and_chunk_file
 from ...entities.knowledge_chunk import KnowledgeChunk
 from ...factory.database import db_config, get_db_context
-from ...factory.embeddings import BaseEmbedder, embedder_conf, get_embeddings
+from ...factory.embeddings import BaseEmbedder, get_embeddings
 from ...utils.logger import get_logger
 
 
 logger = get_logger(__name__)
+current_config = config_manager.load()
 
 
 async def ingest_source_chunks(
@@ -24,7 +28,7 @@ async def ingest_source_chunks(
     tool_context: ToolContext = None
     ) -> str:
     """
-    Ingests multiple text chunks into the pgvector database using batch embedding.
+    Ingests multiple text chunks into the pgvector database using batch embedding.  
 
     -------
     Params:
@@ -54,7 +58,7 @@ async def ingest_source_chunks(
         logger.error(error_no_chunks)
         return error_no_chunks
     
-    embedder: BaseEmbedder = get_embeddings(embedder_conf)
+    embedder: BaseEmbedder = get_embeddings(config_manager.load().embedder)
 
     if not embedder:
         error_no_embedder = "❌ Error: No content Embeddings model available."
@@ -87,7 +91,7 @@ async def ingest_source_chunks(
                         chunk_id=current_idx, 
                         source_type=source_type,
                         authors=authors,
-                        embedding=vector,
+                        embedding=vector if current_config.db.is_postgres else None,
                         subject=subject.lower(),
                         embedding_model=embedder.model,
                         metadatas=metadatas
@@ -97,6 +101,25 @@ async def ingest_source_chunks(
                 # 3. Intermediate Commit (Flush to DB)
                 logger.info(f"💾 Committing batch {i//batch_size + 1} to Postgres...")
                 await session.commit() 
+
+                # LOCAL MODE EXTRA STEP: Sync to LanceDB
+                if not current_config.db.is_postgres:
+                    db = lancedb.connect("./.dyresearch_vectors")
+                    table_name = "knowledge_chunks"
+                    
+                    # Prepare data for LanceDB
+                    data = [{
+                        "vector": vector, 
+                        "text": text, 
+                        "source_title": title,
+                        "subject": subject.lower()
+                    } for text, vector in zip(batch_text, batch_vectors)]
+                    
+                    if table_name not in db.table_names():
+                        db.create_table(table_name, data=data)
+                    else:
+                        db.open_table(table_name).add(data)
+
                 chunks_saved += len(batch_text)
 
         success_msg = f"✅ Ingestion Complete: '{title}' - {chunks_saved}/{total_chunks} chunks indexed."
@@ -290,53 +313,74 @@ async def list_available_sources(tool_context: ToolContext = None) -> str:
 async def delete_source(title: str, tool_context: ToolContext = None) -> str:
     """
     Deletes all vectorized chunks associated with a specific source title from the database.
-    Use this when the user asks to remove a book, website, or document from the library.
+    Use this when the user asks to remove a book, website, or document from the library.  
     """
+    
     try:
         async with get_db_context(db_config) as session:
+            # 1. Relational Deletion (Handles Postgres or SQLite)
             stmt = delete(KnowledgeChunk).where(KnowledgeChunk.source_title == title)
-            
             result = await session.execute(stmt)
             deleted_count = result.rowcount
             
             if deleted_count == 0:
-                return f"Could not find any source named '{title}' in the library to delete."
+                return f"Could not find any source named '{title}' in the library."
+
+            # 2. Vector Store Deletion (LanceDB specific)
+            if not current_config.db.is_postgres:
+                try:
+                    db = lancedb.connect("./.dyresearch_vectors")
+                    if "knowledge_chunks" in db.table_names():
+                        table = db.open_table("knowledge_chunks")
+                        # Sanitize single quotes for the LanceDB filter string
+                        safe_title = title.replace("'", "''")
+                        table.delete(f"source_title = '{safe_title}'")
+                        logger.info(f"LanceDB synced: deleted vectors for {title}")
+                except Exception as ve:
+                    logger.warning(f"Metadata deleted but LanceDB sync failed: {ve}")
 
             await session.commit()
-            
             return f"✅ Successfully removed '{title}' from the library. ({deleted_count} chunks deleted)."
 
     except Exception as e:
+        logger.error(f"Failed to delete source '{title}': {str(e)}")
         return f"Failed to delete source '{title}': {str(e)}"
     
 
 async def delete_by_subject(subject: str) -> str:
     """
-    Deletes ALL knowledge chunks associated with a specific subject index.
+    Deletes ALL knowledge chunks associated with a specific subject index.  
+
     Use this to clear an entire category (e.g., 'physics', 'temp_research') from the library.
     """
     if not subject:
-        return "Error: Please provide a valid subject name to delete."
+        return "Error: Please provide a valid subject name."
     
     target_subject = subject.lower()
 
     try:
         async with get_db_context(db_config) as session:
+            # 1. Relational Deletion
             stmt = delete(KnowledgeChunk).where(KnowledgeChunk.subject == target_subject)
             result = await session.execute(stmt)
             deleted_count = result.rowcount
             
             if deleted_count == 0:
-                return f"No records found for subject '{subject}'. Nothing was deleted."
-            
-            # Finalize the transaction
+                return f"No records found for subject '{subject}'."
+
+            # 2. Vector Store Deletion (LanceDB specific)
+            if not current_config.db.is_postgres:
+                try:
+                    db = lancedb.connect("./.dyresearch_vectors")
+                    if "knowledge_chunks" in db.table_names():
+                        table = db.open_table("knowledge_chunks")
+                        table.delete(f"subject = '{target_subject}'")
+                        logger.info(f"LanceDB synced: purged subject index '{target_subject}'")
+                except Exception as ve:
+                    logger.warning(f"Metadata deleted but LanceDB sync failed: {ve}")
+
             await session.commit()
-            
-            return (
-                f"🗑️ Bulk Delete Successful!\n"
-                f"Removed the entire '{subject}' index.\n"
-                f"Total chunks purged: {deleted_count}."
-            )
+            return f"🗑️ Bulk Delete Successful! Removed the '{subject}' index ({deleted_count} chunks)."
         
     except Exception as e:
         return f"Failed to perform bulk delete on subject '{subject}': {str(e)}"
@@ -378,64 +422,89 @@ async def search_knowledge_base(
     grouped by source document with full citations (Source Title and Authors). 
     Returns a "No results found" message if the search yields no hits.
     """
-    embedder = get_embeddings(embedder_conf)
+    embedder = get_embeddings(config_manager.load().embedder)
     if not embedder:
         return "Error: Embedder not configured."
 
     try:
         query_vector = await embedder.embed_query(query)
+        chunks = []
 
-        async with get_db_context(db_config) as session:
-            stmt = select(KnowledgeChunk)
-            if subject_filter != "":
-                stmt = stmt.where(KnowledgeChunk.subject == subject_filter.lower())
-            stmt = stmt.order_by(KnowledgeChunk.embedding.cosine_distance(query_vector)).limit(limit)
+        # ---- DOCKER / CLOUD MODE: pgvector ----
+        if current_config.db.is_postgres: 
+            async with get_db_context(db_config) as session:
+                stmt = select(KnowledgeChunk)
+                if subject_filter:
+                    stmt = stmt.where(KnowledgeChunk.subject == subject_filter.lower())
+                stmt = stmt.order_by(KnowledgeChunk.embedding.cosine_distance(query_vector)).limit(limit)
+                result = await session.execute(stmt)
+                chunks = result.scalars().all()
+                
+                if retrieve_adjacent_chunks and chunks:
+                    final_chunks = list(chunks)
+                    for chunk in chunks:
+                        neighbor_stmt = select(KnowledgeChunk).where(
+                            KnowledgeChunk.source_title == chunk.source_title,
+                            KnowledgeChunk.chunk_id.in_([chunk.chunk_id - 1, chunk.chunk_id + 1])
+                        )
+                        neighbor_result = await session.execute(neighbor_stmt)
+                        final_chunks.extend(neighbor_result.scalars().all())
+                    chunks = final_chunks
+
+        # ---- LOCAL MODE: LanceDB ---- 
+        else:
+            db = lancedb.connect("./.dyresearch_vectors")
+            table = db.open_table("knowledge_chunks")
             
-            result = await session.execute(stmt)
-            chunks = result.scalars().all()
+            search_query = table.search(query_vector).limit(limit)
+            if subject_filter:
+                search_query = search_query.where(f"subject = '{subject_filter.lower()}'")
+            
+            results = search_query.to_list()
+            # FIX: Ensure chunk_id and id are captured for neighbors/dedup
+            chunks = [
+                KnowledgeChunk(
+                    id=r.get("id"),
+                    text=r["text"], 
+                    source_title=r["source_title"],
+                    chunk_id=r.get("chunk_id") 
+                ) for r in results
+            ]
 
-            if not chunks:
-                folder_info = f" in the '{subject_filter}' index" if subject_filter != "" else ""
-                return f"I searched the library but found no relevant documents{folder_info}."
-
-            logger.info(f"Retrieved {len(chunks)} Chunks")
-
-            final_chunks = list(chunks)
-
-            # Expanded Retrieval Logic
-            if retrieve_adjacent_chunks:
-                logger.info("Expanding search to adjacent chunks...")
-
+            if retrieve_adjacent_chunks and chunks:
+                final_chunks = list(chunks)
                 for chunk in chunks:
-                    # Logic: Find where source matches and index is i-1 or i+1
-                    neighbor_stmt = select(KnowledgeChunk).where(
-                        KnowledgeChunk.source_title == chunk.source_title,
-                        KnowledgeChunk.chunk_id.in_([chunk.chunk_id - 1, chunk.chunk_id + 1])
-                    )
-                    neighbor_result = await session.execute(neighbor_stmt)
-                    neighbors = neighbor_result.scalars().all()
-                    final_chunks.extend(neighbors)
+                    if chunk.chunk_id is not None:
+                        # Query LanceDB for the neighbors
+                        neighbors = table.search().where(
+                            f"source_title = '{chunk.source_title}' AND chunk_id IN ({chunk.chunk_id - 1}, {chunk.chunk_id + 1})"
+                        ).to_list()
+                        final_chunks.extend([KnowledgeChunk(**n) for n in neighbors])
+                chunks = final_chunks
 
-                # Deduplication and Re-ordering
-                # Use a dict to dedup by ID, then sort by source and sequence for readability
-                unique_chunks = {c.id: c for c in final_chunks}.values()
-                final_chunks = sorted(unique_chunks, key=lambda x: (x.source_title, x.chunk_id))
+        if not chunks:
+            return f"I searched the library but found no relevant documents."
+        
+        logger.info(f"Retrieved {len(chunks)} Chunks")
 
-            logger.info(f"Retrieved {len(final_chunks)} Chunks (Base hits: {len(chunks)})")
+        # ---- DEDUPLICATION & SORTING ----
+        # Use ID if available, otherwise fallback to text hash
+        unique_chunks = {getattr(c, 'id', hash(c.text)): c for c in chunks}.values()
+        sorted_chunks = sorted(unique_chunks, key=lambda x: (x.source_title, x.chunk_id or 0))
 
-            # Format the response with clear citations 
-            formatted_results = [f"### Knowledge Base Results (Adjacent Context: {'On' if retrieve_adjacent_chunks else 'Off'}):"]
-            
-            current_source = ""
-            for chunk in final_chunks:
-                # Group by source title visually
-                if chunk.source_title != current_source:
-                    formatted_results.append(f"\n--- From: **{chunk.source_title}** ---")
-                    current_source = chunk.source_title
-                formatted_results.append(f"> ... {chunk.text.strip()} ...")
+        # ---- FORMATTING ----
+        logger.info(f"Returning {len(sorted_chunks)} Chunks to Agent")
+        formatted_results = [f"### Knowledge Base Results (Adjacent Context: {'On' if retrieve_adjacent_chunks else 'Off'}):"]
+        
+        current_source = ""
+        for chunk in sorted_chunks:
+            if chunk.source_title != current_source:
+                formatted_results.append(f"\n--- From: **{chunk.source_title}** ---")
+                current_source = chunk.source_title
+            formatted_results.append(f"> ... {chunk.text.strip()} ...")
 
-            return "\n".join(formatted_results)
+        return "\n".join(formatted_results)
 
     except Exception as e:
-        logger.warning(f"An error occured: {e}")
+        logger.error(f"Search Error: {e}", exc_info=True)
         return f"An error occurred during the search: {str(e)}"

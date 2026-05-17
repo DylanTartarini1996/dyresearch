@@ -13,13 +13,6 @@ logger = get_logger(__name__)
 load_dotenv("config.env")
 
 
-embedder_conf = EmbedderConf(
-    type=os.getenv("EMBEDDINGS_TYPE"),
-    model=os.getenv("EMBEDDINGS_MODEL_NAME"),
-    api_key=os.getenv("EMBEDDINGS_API_KEY")
-)
-
-
 class BaseEmbedder(ABC):
     """Universal interface for all embedding providers."""
     @abstractmethod
