@@ -91,8 +91,6 @@ class ConfigManager:
         if config.embedder.api_key:
             os.environ["EMBEDDINGS_API_KEY"] = config.embedder.api_key
 
-        
-        # Add more env mappings as needed for other providers
         logger.info("Configuration applied to environment")
 
 

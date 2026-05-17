@@ -23,9 +23,28 @@ async def get_settings():
 async def update_settings(new_config: FullConfiguration):
     """Updates and persists the configuration."""
     try:
+        current_config = config_manager.load()
+        
+        # 1. Protect Default LLM Key
+        if new_config.default_llm.api_key and new_config.default_llm.api_key.startswith("sk-..."):
+            new_config.default_llm.api_key = current_config.default_llm.api_key
+
+        # 2. Protect Agent Keys
+        for agent_name, agent_cfg in new_config.agent_configs.items():
+            if agent_cfg.api_key and agent_cfg.api_key.startswith("sk-..."):
+                # Grab the actual key from the existing config
+                old_key = current_config.agent_configs.get(agent_name, current_config.default_llm).api_key
+                agent_cfg.api_key = old_key
+                
+        # 3. Protect Embedder Key (NEW)
+        if new_config.embedder.api_key and new_config.embedder.api_key.startswith("sk-..."):
+            new_config.embedder.api_key = current_config.embedder.api_key
+
         config_manager.save(new_config)
         return {"status": "success", "message": "Configuration updated and saved"}
+        
     except Exception as e:
+        logger.error(f"Save failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
     
 
