@@ -19,6 +19,7 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // main.ts
 var main_exports = {};
 __export(main_exports, {
+  ChatModal: () => ChatModal,
   HistoryView: () => HistoryView,
   VIEW_TYPE_HISTORY: () => VIEW_TYPE_HISTORY,
   default: () => DyResearchPlugin
@@ -26,6 +27,83 @@ __export(main_exports, {
 module.exports = __toCommonJS(main_exports);
 var import_obsidian = require("obsidian");
 var VIEW_TYPE_HISTORY = "dyresearch-history-view";
+var DyResearchSettingTab = class extends import_obsidian.PluginSettingTab {
+  plugin;
+  config = null;
+  constructor(app, plugin) {
+    super(app, plugin);
+    this.plugin = plugin;
+  }
+  async display() {
+    const { containerEl } = this;
+    containerEl.empty();
+    containerEl.createEl("h2", { text: "DyResearch Engine Settings" });
+    if (!this.config) {
+      try {
+        const response = await fetch("http://localhost:8000/settings");
+        this.config = await response.json();
+      } catch (e) {
+        containerEl.createEl("p", { text: "\u274C Could not connect to Python Engine.", cls: "error-text" });
+        return;
+      }
+    }
+    const config = this.config;
+    new import_obsidian.Setting(containerEl).setName("Default LLM Model").setDesc("Fallback model for all agents").addText((text) => text.setValue(config.default_llm.model).onChange(async (val) => {
+      config.default_llm.model = val;
+    }));
+    new import_obsidian.Setting(containerEl).setName("Default API Key").setDesc("API key for the default provider").addText((text) => text.setPlaceholder("sk-...").setValue(config.default_llm.api_key || "").onChange(async (val) => {
+      config.default_llm.api_key = val;
+    }));
+    containerEl.createEl("h3", { text: "Agent Configurations" });
+    const agents = ["coordinator", "professor", "librarian", "notetaker", "researcher"];
+    agents.forEach((agentName) => {
+      const agentCfg = config.agent_configs[agentName];
+      const details = containerEl.createEl("details");
+      const summary = details.createEl("summary", { text: `Settings for ${agentName.toUpperCase()}` });
+      new import_obsidian.Setting(details).setName("Model").addText((t) => t.setValue(agentCfg.model).onChange((v) => agentCfg.model = v));
+      new import_obsidian.Setting(details).setName("Type").addDropdown((d) => d.addOptions({ "openai": "OpenAI", "google": "Google", "groq": "Groq", "ollama": "Ollama" }).setValue(agentCfg.type).onChange((v) => agentCfg.type = v));
+      new import_obsidian.Setting(details).setName("API Key").addText((t) => t.setPlaceholder("Leave blank to use default").setValue(agentCfg.api_key || "").onChange((v) => agentCfg.api_key = v));
+    });
+    containerEl.createEl("h3", { text: "Embedder Configuration" });
+    new import_obsidian.Setting(containerEl).setName("Embedder Type").setDesc("The provider used to generate vector embeddings").addDropdown((d) => d.addOptions({
+      "openai": "OpenAI",
+      "google": "Google (Gemini)",
+      "huggingface": "HuggingFace (Local)",
+      "ollama": "Ollama"
+    }).setValue(config.embedder.type).onChange((v) => config.embedder.type = v));
+    new import_obsidian.Setting(containerEl).setName("Embedder Model").setDesc("Specific model for embeddings (e.g., gemini-embedding-001)").addText((t) => t.setValue(config.embedder.model || "").onChange((v) => config.embedder.model = v));
+    new import_obsidian.Setting(containerEl).setName("Embedder API Key").setDesc("Leave blank to use Default API Key").addText((t) => t.setPlaceholder("sk-...").setValue(config.embedder.api_key || "").onChange((v) => config.embedder.api_key = v));
+    containerEl.createEl("h3", { text: "Database (Relational & Vector)" });
+    new import_obsidian.Setting(containerEl).setName("DB Connection URL").setDesc("SQLite path or Postgres connection string").addText((text) => text.setPlaceholder("sqlite:///./adk_history.db").setValue(config.db.url || "").onChange(async (val) => {
+      config.db.url = val;
+    }));
+    const btnDiv = containerEl.createDiv({ cls: "settings-save-container" });
+    const saveBtn = btnDiv.createEl("button", { text: "Save & Reload Engine", cls: "mod-cta" });
+    saveBtn.onclick = async () => {
+      saveBtn.disabled = true;
+      saveBtn.setText("Saving...");
+      try {
+        const response = await fetch("http://localhost:8000/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(this.config)
+        });
+        if (response.ok) {
+          new import_obsidian.Notice("Settings saved successfully!");
+          this.config = null;
+          this.display();
+        } else {
+          throw new Error();
+        }
+      } catch (e) {
+        new import_obsidian.Notice("Failed to save settings.");
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.setText("Save & Reload Engine");
+      }
+    };
+  }
+};
 var HistoryView = class extends import_obsidian.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
@@ -40,6 +118,9 @@ var HistoryView = class extends import_obsidian.ItemView {
   // Chat state
   chatOffset = 0;
   chatLimit = 10;
+  // Search Properties
+  searchQuery = "";
+  isFuzzySearch = false;
   getViewType() {
     return VIEW_TYPE_HISTORY;
   }
@@ -93,13 +174,51 @@ var HistoryView = class extends import_obsidian.ItemView {
     closeBtn.onClickEvent(() => {
       this.app.workspace.rightSplit.collapse();
     });
+    const searchContainer = container.createDiv({ cls: "history-search-container" });
+    const searchInput = searchContainer.createEl("input", {
+      type: "text",
+      placeholder: "Search sessions...",
+      value: this.searchQuery,
+      cls: "history-search-input"
+    });
+    const fuzzySetting = searchContainer.createDiv({ cls: "history-fuzzy-toggle" });
+    const fuzzyCheckbox = fuzzySetting.createEl("input", {
+      type: "checkbox",
+      id: "fuzzy-search-checkbox"
+    });
+    fuzzyCheckbox.checked = this.isFuzzySearch;
+    const fuzzyLabel = fuzzySetting.createEl("label", {
+      text: "Fuzzy",
+      attr: { for: "fuzzy-search-checkbox" }
+    });
+    searchInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        this.searchQuery = searchInput.value.trim();
+        this.isFuzzySearch = fuzzyCheckbox.checked;
+        this.chatOffset = 0;
+        list.empty();
+        loadChats();
+      }
+    });
+    searchInput.addEventListener("input", () => {
+      if (searchInput.value.trim() === "" && this.searchQuery !== "") {
+        this.searchQuery = "";
+        this.chatOffset = 0;
+        list.empty();
+        loadChats();
+      }
+    });
     const list = container.createDiv({ cls: "history-list" });
     const footer = container.createDiv({ cls: "history-footer" });
-    this.chatOffset = 0;
     const loadChats = async () => {
       const loadingText = list.createEl("p", { text: "Loading sessions...", cls: "loading-text" });
       try {
-        const url = `http://localhost:8000/history/${this.plugin.userId}?limit=${this.chatLimit}&offset=${this.chatOffset}`;
+        let url = "";
+        if (this.searchQuery) {
+          url = `http://localhost:8000/sessions/search?user_id=${this.plugin.userId}&q=${encodeURIComponent(this.searchQuery)}&fuzzy=${this.isFuzzySearch}`;
+        } else {
+          url = `http://localhost:8000/history/${this.plugin.userId}?limit=${this.chatLimit}&offset=${this.chatOffset}`;
+        }
         const response = await fetch(url);
         const data = await response.json();
         loadingText.remove();
@@ -184,16 +303,25 @@ var HistoryView = class extends import_obsidian.ItemView {
             }
           });
         });
-        this.chatOffset += data.sessions.length;
         footer.empty();
-        if (this.chatOffset < data.total) {
-          const loadMoreBtn = footer.createEl("button", {
-            text: "Load Older Chats",
-            cls: "dy-load-more-btn"
-          });
-          loadMoreBtn.onClickEvent(() => loadChats());
-        } else if (data.total > 0) {
-          footer.createEl("p", { text: "End of history", cls: "text-muted" });
+        if (this.searchQuery) {
+          this.chatOffset = data.sessions.length;
+          if (data.sessions.length === 0) {
+            list.createEl("p", { text: "No matching sessions found.", cls: "text-muted" });
+          } else {
+            footer.createEl("p", { text: `Found ${data.sessions.length} matches`, cls: "text-muted" });
+          }
+        } else {
+          this.chatOffset += data.sessions.length;
+          if (this.chatOffset < data.total) {
+            const loadMoreBtn = footer.createEl("button", {
+              text: "Load Older Chats",
+              cls: "dy-load-more-btn"
+            });
+            loadMoreBtn.onClickEvent(() => loadChats());
+          } else if (data.total > 0) {
+            footer.createEl("p", { text: "End of history", cls: "text-muted" });
+          }
         }
       } catch (err) {
         loadingText.setText("Failed to load history.");
@@ -328,6 +456,7 @@ var DyResearchPlugin = class extends import_obsidian.Plugin {
   currentSessionId = `obsidian_${Date.now()}`;
   userId = "dyresearch_plugin_user";
   async onload() {
+    this.addSettingTab(new DyResearchSettingTab(this.app, this));
     this.registerView(VIEW_TYPE_HISTORY, (leaf) => new HistoryView(leaf, this));
     this.addRibbonIcon("bot", "DyResearch Chat", () => {
       new ChatModal(this.app, this).open();
@@ -365,7 +494,8 @@ var ChatModal = class extends import_obsidian.Modal {
       const historyResponse = await fetch(`http://localhost:8000/sessions/${this.plugin.currentSessionId}/messages`);
       const messages = await historyResponse.json();
       for (const msg of messages) {
-        const msgDiv = this.appendMessage(chatHistory, msg.role, "");
+        const senderLabel = msg.role === "user" ? "\u{1F464} You" : "\u{1F916} AI";
+        const msgDiv = this.appendSimpleMessage(chatHistory, senderLabel, "");
         await import_obsidian.MarkdownRenderer.render(this.app, msg.content, msgDiv, "", this.plugin);
       }
       chatHistory.scrollTop = chatHistory.scrollHeight;
@@ -377,15 +507,17 @@ var ChatModal = class extends import_obsidian.Modal {
       type: "text",
       placeholder: "Type your message..."
     });
+    inputField.focus();
     inputField.addEventListener("keydown", async (e) => {
-      var _a;
       if (e.key === "Enter" && inputField.value.trim() !== "") {
         const userQuery = inputField.value;
         inputField.value = "";
-        this.appendMessage(chatHistory, "\u{1F464} You", userQuery);
-        const aiMsgDiv = this.appendMessage(chatHistory, "\u{1F916} AI", "...");
+        this.appendSimpleMessage(chatHistory, "\u{1F464} You", userQuery);
+        const ai = this.appendStreamingMessage(chatHistory, "\u{1F916} AI");
+        let fullAnswer = "";
+        chatHistory.scrollTop = chatHistory.scrollHeight;
         try {
-          const apiResponse = await fetch("http://localhost:8000/chat", {
+          const response = await fetch("http://localhost:8000/chat/stream", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -394,27 +526,68 @@ var ChatModal = class extends import_obsidian.Modal {
               user_id: this.plugin.userId
             })
           });
-          if (!apiResponse.ok) throw new Error("Server unreachable");
-          const data = await apiResponse.json();
-          aiMsgDiv.empty();
-          await import_obsidian.MarkdownRenderer.render(this.app, data.message, aiMsgDiv, "", this.plugin);
-          const historyView = (_a = this.app.workspace.getLeavesOfType(VIEW_TYPE_HISTORY)[0]) == null ? void 0 : _a.view;
-          if (historyView) historyView.refreshView();
+          if (!response.body) throw new Error("No response body");
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const chunk = decoder.decode(value, { stream: true });
+            const lines = chunk.split("\n\n");
+            for (const line of lines) {
+              if (!line.startsWith("data: ")) continue;
+              try {
+                const data = JSON.parse(line.replace("data: ", ""));
+                if (data.type === "system") {
+                  ai.statusEl.setText(data.content);
+                } else if (data.type === "thinking") {
+                  ai.thinkingEl.style.display = "block";
+                  ai.thinkingEl.innerText += data.content;
+                } else if (data.type === "answer") {
+                  fullAnswer += data.content;
+                  ai.answerEl.empty();
+                  await import_obsidian.MarkdownRenderer.render(this.app, fullAnswer, ai.answerEl, "", this.plugin);
+                } else if (data.error) {
+                  new import_obsidian.Notice("AI Error: " + data.error);
+                }
+              } catch (parseErr) {
+                console.error("Error parsing stream chunk", parseErr);
+              }
+            }
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+          }
+          ai.statusEl.setText("");
         } catch (err) {
-          aiMsgDiv.setText("\u274C Error: Could not reach Python sidecar.");
+          ai.answerEl.setText("\u274C Error: Could not reach Python sidecar.");
+          console.error(err);
         }
-        chatHistory.scrollTop = chatHistory.scrollHeight;
       }
     });
   }
-  appendMessage(container, sender, text) {
+  // Creates a structured message area for streaming AI responses
+  appendStreamingMessage(container, sender) {
+    const msgWrapper = container.createDiv({ cls: "chat-msg-wrapper" });
+    msgWrapper.createEl("small", { text: sender, cls: "chat-sender" });
+    const statusEl = msgWrapper.createDiv({ cls: "chat-status-indicator" });
+    const thinkingEl = msgWrapper.createDiv({ cls: "chat-thinking-block" });
+    const answerEl = msgWrapper.createDiv({ cls: "chat-msg-content" });
+    thinkingEl.style.display = "none";
+    return { statusEl, thinkingEl, answerEl };
+  }
+  // Creates a simple message area for users or history loading
+  appendSimpleMessage(container, sender, text) {
     const msgWrapper = container.createDiv({ cls: "chat-msg-wrapper" });
     msgWrapper.createEl("small", { text: sender, cls: "chat-sender" });
     return msgWrapper.createDiv({ cls: "chat-msg-content", text });
   }
+  onClose() {
+    const { contentEl } = this;
+    contentEl.empty();
+  }
 };
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
+  ChatModal,
   HistoryView,
   VIEW_TYPE_HISTORY
 });

@@ -12,31 +12,39 @@ from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Try to get config from environment
 db_config = DBConfig(
     password=os.getenv('POSTGRES_PASSWORD'),
     host=os.getenv('DB_HOST'),
     port=os.getenv('DB_PORT'),
     user=os.getenv('POSTGRES_USER'), 
-    database=os.getenv('POSTGRES_DB')
+    database=os.getenv('POSTGRES_DB'),
+    url=os.getenv('SESSION_SERVICE_URI')
 )
 
 
 class DatabaseFactory:
     def __init__(self, config: DBConfig):
-        self.user = config.user
-        self.password = config.password
-        self.host = config.host
-        self.port = str(config.port)
-        self.database = config.database
+        # Determine if we should use Postgres or SQLite
+        self.config = config
+        self.is_postgres = config.is_postgres
+            
+        logger.info(f"DB Init - host: {config.host}, url: {config.url}, is_postgres: {self.is_postgres}")
         
+        # Engine parameters
+        engine_kwargs = {
+            "echo": False,
+            "pool_recycle": 3600,
+            "pool_pre_ping": True,
+        }
         
+        if self.is_postgres:
+            engine_kwargs["pool_size"] = 50
+            engine_kwargs["max_overflow"] = 10
+            
         self.engine = create_async_engine(
             self.get_db_url(), 
-            echo=False,
-            pool_recycle=3600,  # Restart connection after an hour
-            pool_pre_ping=True,  # Test connection before usage
-            pool_size=50,         # Limit connection pool
-            max_overflow=10      # Maximum number of connections
+            **engine_kwargs
         )
             
         self.session_factory = async_sessionmaker(
@@ -49,38 +57,48 @@ class DatabaseFactory:
     async def init_models(self):
         """Initialize database models asynchronously"""
         async with self.engine.begin() as conn:
-            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
-            logger.info("Verified pgvector existence")
+            if self.is_postgres:
+                try:
+                    await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+                    await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm;"))
+                    logger.info("Verified pgvector existence")
+                except Exception as e:
+                    logger.warning(f"Could not create pgvector extension: {e}")
+            
             await conn.run_sync(Base.metadata.create_all)
-            logger.info("Created metadata")
+            logger.info(f"Created metadata (Postgres: {self.is_postgres})")
 
 
     def get_db_url(self) -> str:
         """Generate database URL with proper URL encoding and validation"""
         
-        # 1. Validate required parameters (Ensure none are None)
-        if not all([self.user, self.password, self.host, self.port, self.database]):
-            logger.error("❌ Invalid DB configuration - one or more fields are missing")
-            # Consider raising an exception here to stop execution early
-            raise ValueError("Missing database configuration environment variables")
+        # Priority 1: Direct URL from config
+        if self.config.url:
+            return self.config.url
 
-        # 2. URL encode to handle special characters (@, :, /, etc.)
-        encoded_user = quote_plus(str(self.user))
-        encoded_password = quote_plus(str(self.password))
+        # Priority 2: Build Postgres URL if is_postgres
+        if self.is_postgres:
+            if not all([self.config.user, self.config.password, self.config.host, self.config.port, self.config.database]):
+                logger.error("❌ Invalid Postgres configuration - one or more fields are missing")
+                raise ValueError("Missing database configuration environment variables for PostgreSQL")
+
+            encoded_user = quote_plus(str(self.config.user))
+            encoded_password = quote_plus(str(self.config.password))
+            
+            try:
+                port = int(self.config.port)
+            except (ValueError, TypeError):
+                logger.error(f"❌ Invalid DB port: {self.config.port}")
+                raise
+
+            url = f"postgresql+asyncpg://{encoded_user}:{encoded_password}@{self.config.host}:{port}/{self.config.database}"
+            logger.info(f"Connecting to Postgres at {self.config.host}:{port}")
+            return url
         
-        try:
-            # 3. Validate port
-            port = int(self.port)
-            if not (0 < port <= 65535):
-                raise ValueError("Port must be between 1 and 65535")
-        except ValueError as e:
-            logger.error(f"❌ Invalid DB port: {self.port}")
-            raise
-
-        # 4. Return PostgreSQL formatted URL
-        url = f"postgresql+asyncpg://{encoded_user}:{encoded_password}@{self.host}:{port}/{self.database}"
-        logger.info(f"Connecting to Postgres at {self.host}:{port} using database: {self.database}")
-        return url
+        # Priority 3: Fallback to local SQLite
+        default_db = "sqlite+aiosqlite:///./adk_history.db"
+        logger.info(f"Using default local SQLite database: {default_db}")
+        return default_db
 
 
 database_factory = DatabaseFactory(db_config)
@@ -99,7 +117,7 @@ async def get_db_context(db_config: DBConfig):
         await session.execute(text("SELECT 1"))
     except Exception as e:
         logger.error(f"Connection error: {e}")
-        logger.info("Requesting new password and recreating factory")
+        logger.info("Recreating factory")
         database_factory = DatabaseFactory(db_config)
 
         try:
@@ -108,7 +126,7 @@ async def get_db_context(db_config: DBConfig):
             await session.execute(text("SELECT 1"))
         except Exception as e:
             logger.error(f"❌ Error after connection refresh: {e}")
-            raise Exception(message="Unable to connect to database")   
+            raise Exception("Unable to connect to database")   
     try:
         yield session
     except Exception as e:

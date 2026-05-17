@@ -1,5 +1,8 @@
 import os 
 import datetime
+from pathlib import Path
+import re
+from typing import Optional
 
 from google.adk.tools.tool_context import ToolContext
 
@@ -221,3 +224,54 @@ def delete_obsidian_note(
         return f"Success: Note '{clean_title}' has been permanently removed from the vault."
     except Exception as e:
         return f"Error deleting note: {str(e)}"
+    
+
+def find_note_path(vault_path: str, note_title: str) -> Optional[Path]:
+    """Scans the vault to find the actual Path of a note title."""
+    # Ensure title doesn't have .md for the search
+    target_name = note_title.replace(".md", "") + ".md"
+    
+    for root, _, files in os.walk(vault_path):
+        if target_name in files:
+            return Path(root) / target_name
+    return None
+    
+
+async def get_obsidian_relations(note_title: str, tool_context: ToolContext) -> str:
+    """
+    Explores the Obsidian's knowledge graph by finding forward links and backlinks 
+    for a specific note. Use this to find connected concepts.
+    """
+    vault_path = tool_context.state.get("vault_path") or os.getenv("OBSIDIAN_VAULT_PATH", "obsidian")
+
+    # Clean the note title (in case the agent passes [[Title]])
+    clean_title = note_title.strip("[]")
+    # Locate the File Path (Scanning subfolders)
+    note_path = find_note_path(vault_path, clean_title)
+
+    if not note_path or not note_path.exists():
+        logger.warning(f"Note '{clean_title}' not found in vault {vault_path}")
+        return f"Note '{clean_title}' not found in the vault graph. Ensure the title is exact."
+
+    # Find Forward Links
+    content = Path(note_path).read_text(encoding="utf-8")
+    forward_links = re.findall(r'\[\[(.*?)\]\]', content)
+
+    # Find Backlinks 
+    backlinks = []
+    for root, _, files in os.walk(vault_path):
+        for file in files:
+            if file.endswith(".md") and file != f"{note_title}.md":
+                f_path = Path(root) / file
+                f_content = f_path.read_text(encoding="utf-8")
+                if f"[[{note_title}]]" in f_content or f"[[{note_title}|" in f_content:
+                    backlinks.append(f_path.stem)
+
+    # 3. Format for the Agent
+    res = [f"### Graph Relations for [[{note_title}]]:"]
+    res.append(f"**Direct Connections (Forward Links):** {', '.join([f'[[{l}]]' for l in forward_links]) or 'None'}")
+    res.append(f"**Mentioned In (Backlinks):** {', '.join([f'[[{b}]]' for b in backlinks]) or 'None'}")
+    
+    logger.info(f"Graph Traversal: Found {len(forward_links)} forward and {len(backlinks)} backlinks for {clean_title}")
+    
+    return "\n".join(res)

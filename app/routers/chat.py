@@ -1,33 +1,22 @@
-import os
+import json
 
 from datetime import datetime
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from google.genai import types
-from google.adk.runners import Runner
-from google.adk.sessions.database_session_service import DatabaseSessionService
 
+from app import APP_NAME
 from app.models.request_chat import ChatRequest
 from app.models.request_rename_session import RenameSessionRequest
 from app.models.response_chat import ChatResponse
 from app.models.session_info import SessionInfo
-from dyresearch.agent import root_agent
-from dyresearch.sessions.memory import rename_adk_session
+from dyresearch.factory.runner import runner
+from dyresearch.sessions.memory import rename_adk_session, search_session_by_name
 from dyresearch.utils.logger import get_logger
-
-APP_NAME = "DyResearch"
 
 logger = get_logger(__name__)
 
 chat_router = APIRouter(tags=["chats"])
-
-db_url =os.getenv("SESSION_SERVICE_URI", "postgresql+asyncpg://adk_user:adk_password@localhost:5432/adk_history")
-session_service = DatabaseSessionService(db_url)
-
-runner = Runner(
-    app_name=APP_NAME,
-    agent=root_agent,
-    session_service=session_service
-)
 
 @chat_router.post("/chat")
 async def chat(chat_request: ChatRequest) -> ChatResponse:
@@ -101,19 +90,109 @@ async def chat(chat_request: ChatRequest) -> ChatResponse:
         raise HTTPException(status_code=500, detail=str(e))
     
 
+@chat_router.post("/chat/stream")
+async def chat_stream(chat_request: ChatRequest):
+
+    async def event_generator():
+        try: 
+            # Ensure Session Exists (Same as before)
+            session = await runner.session_service.get_session(
+                app_name=APP_NAME, 
+                user_id=chat_request.user_id, 
+                session_id=chat_request.session_id
+            )
+            if session is not None: 
+                logger.info(f"Existing session found: {chat_request.session_id}")
+            else:
+                logger.info(f"Creating new session: {chat_request.session_id}")
+                await runner.session_service.create_session(
+                    app_name=APP_NAME, 
+                    user_id=chat_request.user_id, 
+                    session_id=chat_request.session_id
+                )
+
+            new_msg = types.Content(
+                role="user", 
+                parts=[types.Part(text=chat_request.message)]
+            )
+
+            # Iterate through the async stream
+            async for event in runner.run_async(
+                user_id=chat_request.user_id,
+                session_id=chat_request.session_id,
+                invocation_id=chat_request.invocation_id,
+                new_message=new_msg
+            ):
+                author = getattr(event, "author", "")
+                if author == "user":
+                    continue
+
+                # --- Check for Agent Transfers ---
+                actions = getattr(event, "actions", {})
+                if actions:
+                    transfer_agent = actions.get("transfer_to_agent") if isinstance(actions, dict) else getattr(actions, "transfer_to_agent", None)
+                    if transfer_agent:
+                        payload = {"type": "system", "content": f"🔄 Transferring to {transfer_agent}..."}
+                        yield f"data: {json.dumps(payload)}\n\n"
+
+                # --- Check Content Parts ---
+                content = getattr(event, "content", None)
+                if content:
+                    parts = getattr(content, "parts", [])
+                    
+                    for part in parts:
+                        text_chunk = None
+                        is_thought = False
+                        
+                        # Handle Dictionary format
+                        if isinstance(part, dict):
+                            # Catch Function Calls
+                            if "function_call" in part:
+                                tool_name = part["function_call"].get("name", "unknown_tool")
+                                payload = {"type": "system", "content": f"🛠️ Using tool: {tool_name}..."}
+                                yield f"data: {json.dumps(payload)}\n\n"
+                                
+                            text_chunk = part.get("text")
+                            is_thought = part.get("thought", False) 
+                        
+                        # Handle Object format
+                        else:
+                            # Catch Function Calls
+                            function_call = getattr(part, "function_call", None)
+                            if function_call:
+                                tool_name = getattr(function_call, "name", "unknown_tool")
+                                payload = {"type": "system", "content": f"🛠️ Using tool: {tool_name}..."}
+                                yield f"data: {json.dumps(payload)}\n\n"
+
+                            text_chunk = getattr(part, "text", None)
+                            is_thought = getattr(part, "thought", False)
+
+                        # YIELD Text or Thoughts
+                        if text_chunk:
+                            payload = {
+                                "type": "thinking" if is_thought else "answer",
+                                "content": text_chunk
+                            }
+                            yield f"data: {json.dumps(payload)}\n\n"
+            
+        except Exception as e:
+            logger.error(f"❌ Server Error during stream: {e}")
+            # Yield the error to the frontend so the UI doesn't hang indefinitely
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+    # 4. Return the StreamingResponse
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
 @chat_router.get("/history/{user_id}")
 async def get_history(user_id: str, limit: int = 10, offset: int = 0):
     try:
-        # This returns a ListSessionsResponse object
         response = await runner.session_service.list_sessions(
             app_name=APP_NAME, 
             user_id=user_id
         )
-        
-        # Extract the actual list of Session objects
         sessions_list = response.sessions if hasattr(response, "sessions") else []
-        
-        # Sort by the 'last_update_time' (which is a float/timestamp)
+
         sorted_sessions = sorted(
             sessions_list, 
             key=lambda s: s.last_update_time,
@@ -121,10 +200,9 @@ async def get_history(user_id: str, limit: int = 10, offset: int = 0):
         )
 
         total_sessions = len(sorted_sessions)
-        # Brutal pagination here
+    
         paged_sessions = sorted_sessions[offset : offset + limit]
 
-        # Map to your SessionInfo response model
         session_data = [
             SessionInfo(
                 session_id=s.id, 
@@ -143,6 +221,45 @@ async def get_history(user_id: str, limit: int = 10, offset: int = 0):
     except Exception as e:
         logger.error(f"❌ Failed to fetch history: {e}")
         return {"total": 0, "sessions": []}
+    
+
+@chat_router.get("/sessions/search")
+async def search_sessions(
+    user_id: str,
+    q: str = Query(..., description="The session name or ID to search for"),
+    fuzzy: bool = Query(False, description="Enable fuzzy matching")
+):
+    """Searches for sessions by name, with optional fuzzy matching."""
+    try:
+        results = await search_session_by_name(
+            db_session_service=runner.session_service,
+            search_id=q,
+            app_name=APP_NAME,
+            user_id=user_id,
+            fuzzy_match=fuzzy
+        )
+        
+        session_data = []
+        for s in results:
+            if s:
+                last_updated = datetime.fromtimestamp(s.last_update_time) if hasattr(s, "last_update_time") and s.last_update_time > 0 else datetime.now()
+                session_data.append(SessionInfo(
+                    session_id=s.id, 
+                    last_updated=last_updated
+                ))
+                
+        return {
+            "status": "success",
+            "total": len(session_data),
+            "sessions": session_data
+        }
+
+    except NotImplementedError as e:
+        logger.warning(f"Fuzzy search not implemented for this dialect: {e}")
+        raise HTTPException(status_code=501, detail=str(e))
+    except Exception as e:
+        logger.error(f"❌ Failed to search sessions: {e}")
+        raise HTTPException(status_code=500, detail="An error occurred during search.")
     
 
 @chat_router.get("/sessions/{session_id}/messages")

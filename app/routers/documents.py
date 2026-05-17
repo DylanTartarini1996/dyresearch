@@ -53,7 +53,7 @@ async def ingest_documents(
                 title=file.filename,
                 source_type=source_type,
                 authors=authors,
-                metadatas=file_metadata
+                metadata_json=str(file_metadata)
             )
 
             logger.debug(f"{ingestion_msg}")

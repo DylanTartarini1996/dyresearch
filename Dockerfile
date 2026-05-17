@@ -16,7 +16,7 @@ ENV UV_SYSTEM_PYTHON=1 \
     PYTHONUNBUFFERED=1
 
 # Set work directory
-WORKDIR /dyresearch
+WORKDIR /app
 
 # Copy dependency list and install packages
 COPY uv.lock ./uv.lock
@@ -25,6 +25,7 @@ RUN uv sync
 
 # Copy application code
 COPY dyresearch ./dyresearch
+COPY app ./app
 COPY config.env ./config.env
 
 
@@ -45,16 +46,14 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 ENV UV_SYSTEM_PYTHON=1 \
     PYTHONUNBUFFERED=1
 
-WORKDIR /dyresearch
+WORKDIR /app
 
 # Copy installed Python packages and source code from builder
 COPY --from=builder /usr/local/lib/python3.12 /usr/local/lib/python3.12
 COPY --from=builder /usr/local/bin /usr/local/bin
-COPY --from=builder /dyresearch /dyresearch
+COPY --from=builder /app /app
 
 # Expose FastAPI port
 EXPOSE 8000
 
-# ENTRYPOINT ["uv", "run", "adk", "web", "--host", "0.0.0.0", "--port", "8000" "--session_service_uri" "$SESSION_SERVICE_URI"]
-
-ENTRYPOINT ["sh", "-c", "uv run adk web --host 0.0.0.0 --port 8000 --session_service_uri $SESSION_SERVICE_URI"]
+ENTRYPOINT ["uv", "run", "uvicorn", "app.server:app", "--host", "0.0.0.0", "--port", "8000"]

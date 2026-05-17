@@ -1,24 +1,14 @@
-import os
-
-from dotenv import load_dotenv
+from app.settings.config_manager import config_manager
 from google.adk.agents import Agent
 
-from ..callbacks import sync_note_to_library_callback
-from ..config import LLMConf
-from ..factory.llm_providers import get_litellm_model
+from ..callbacks import discover_and_apply_links_callback, sync_note_to_library_callback
 from ..tools.notes import NoteTakingToolset
 
 note_toolset = NoteTakingToolset()
 
-load_dotenv("config.env")
-
-conf = LLMConf(
-    type="google",
-    model=os.getenv("GOOGLE_MODEL_NAME"),
-    api_key=os.getenv("GOOGLE_API_KEY")
-)
-
-# model = get_litellm_model(conf)
+# Load configuration from manager
+full_conf = config_manager.load()
+conf = full_conf.get_llm_conf_for_agent("notetaker")
 
 note_taking_agent = Agent(
     model=conf.model,
@@ -52,4 +42,4 @@ note_taking_agent = Agent(
     )
 )
 
-note_taking_agent.after_tool_callback = sync_note_to_library_callback
+note_taking_agent.after_tool_callback = [discover_and_apply_links_callback, sync_note_to_library_callback]
