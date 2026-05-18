@@ -1,8 +1,13 @@
-# 📚 dyresearch
+# 📚 DyResearch
 
-> April, 2026
+> May, 2026
 
 A Multi-Agent AI system designed to aid in studying, learning, and researching topics. Built with [Google ADK](https://google.github.io/adk-docs/) and served via a FastAPI backend, the system seamlessly interfaces with an Obsidian sidecar plugin for automated knowledge management and note-taking workflows.
+
+
+![settings](assets/obsidian_screen.png)
+
+---
 
 ## 🛠 Tech Stack
 
@@ -11,6 +16,63 @@ A Multi-Agent AI system designed to aid in studying, learning, and researching t
 - **Database & Vector Store:** PostgreSQL with `pgvector`
 - **LLM Integration:** LiteLLM (Google, Groq, local models)
 - **Document Processing:** Docling
+
+---
+
+## 🧩 Getting Started with the Obsidian Plugin
+
+You can integrate DyResearch into your Obsidian workflow in two ways:
+
+### Option 1: Non-Technical User (Quick Install)
+*Best for users who want to get started quickly without managing infrastructure.*
+
+1. **Prerequisites:** Ensure you have [Obsidian](https://obsidian.md/) installed.
+2. **Installation:**
+   - Download the latest plugin release from the [GitHub Actions page](https://github.com/dyresearch/dyresearch/actions) (look for the artifact containing `main.js`, `manifest.json`, and `styles.css`).
+   - Locate your Obsidian vault's plugin directory: `<your-vault-folder>/.obsidian/plugins/`.
+   - Create a folder named `dyresearch-ai` and extract the downloaded files into it.
+3. **Configuration & Data:**
+   - Restart Obsidian.
+   - Go to **Settings > Community Plugins** and enable **DyResearch AI Sidecar**.
+   - Open the **DyResearch** settings page within Obsidian.
+   - Configure the API endpoint and credentials provided by your hosting service.
+   - *Note: For standalone use, the system will automatically instantiate a local SQLite instance coupled with LanceDB to manage your vector data and session history locally.*
+
+   ![settings](assets/obsidian_settings.png)
+
+   ![restart](assets/obsidian_enable_plugin.png)
+
+### Option 2: Developer (Self-Hosted)
+*Best for developers who want full control over the backend, database, and agent logic.*
+
+1. **Infrastructure:** Run the backend locally using Docker Compose:
+   ```bash
+   docker-compose up -d
+   ```
+   This will start the FastAPI server on port `8000` and the PostgreSQL database.
+2. **Plugin Setup:**
+   - Navigate to the `dyresearch-sidecar` directory in this project.
+   - Install dependencies and build the plugin:
+     ```bash
+     npm install
+     npx tsup main.ts --format cjs --external obsidian
+     ```
+   - Follow the installation steps in Option 1 to link this built version into your vault.
+3. **Configuration:**
+   - Ensure your local `config.env` is correctly populated with your API keys.
+   - Set the Obsidian plugin's API URL to `http://localhost:8000`.
+
+---
+
+## 🚀 Obsidian Plugin Functionalities
+
+The DyResearch Obsidian plugin bridges your knowledge base with the intelligent backend, providing:
+
+*   **Intelligent Chat:** Engage in multi-turn conversations with specialized agents (Professor, Librarian, Researcher) via a chat interface.
+*   **Knowledge Management:** Seamlessly ingest local markdown files or documents into the vector store for RAG-powered retrieval.
+*   **Session Management:** Create, rename, delete, and search through your AI chat sessions directly from Obsidian.
+*   **History Sync:** Review previous chat history and retrieve context from past interactions.
+*   **Note Taking:** Automatically digest information into structured notes with support for Mermaid.js diagrams.
 
 ---
 
@@ -43,9 +105,7 @@ Responsible for digesting complex information into structured, useful notes spec
 
 ## ⚙️ Environment Configuration
 
-Before running the project, make sure to set up your environment variables. A `config.env` file is used to provide the backend with necessary API keys and database credentials. 
-
-Create a `config.env` file in the root directory (you can copy the provided variables below or modify the existing `config.env`):
+If you are running the backend yourself, ensure your `config.env` is configured in the root directory:
 
 ```env
 # Database Config
@@ -65,60 +125,13 @@ EMBEDDINGS_MODEL_NAME=gemini-embedding-001
 
 ---
 
-## 🐳 Run with Docker Compose (Recommended)
+## 📍 Developer: Running Locally Without Docker
 
-To run the whole project (Database + API Server) in a containerized environment, simply use:
-
-```bash
-docker-compose up -d
-```
-
-### 🧩 What is Included?
-The `docker-compose.yml` spawns two main services:
-* **`app`**: The FastAPI backend server handling API requests and Agent logic (runs on port `8000`).
-* **`postgres`**: A PostgreSQL instance extended with `pgvector` acting as both the session memory for all agents and the vector store for Librarian and Professor.
-
----
-
-## 📍 Run Locally (Development)
-
-If you prefer to run the API server directly on your host machine for development:
+If you prefer to run the API server directly on your host machine:
 
 1. Ensure you have **Python >= 3.12** and the [`uv`](https://github.com/astral-sh/uv) package manager installed.
 2. Ensure your Postgres database is running.
 3. Start the FastAPI server:
-
-```bash
-uv run uvicorn app.server:app --host 127.0.0.1 --port 8000 --reload
-```
-
----
-
-##  Obsidian Sidecar Plugin
-
-To integrate DyResearch seamlessly into Obsidian, a dedicated sidecar plugin is included in `dyresearch-sidecar/`. This acts as the visual and interactive bridge to the Python backend.
-
-![screen](assets/obsidian_screen.png)
-
-**Build and Installation:**
-
-```bash
-# Navigate to your Obsidian vault's plugins folder
-cd <your-obsidian-vault>/.obsidian/plugins/
-
-# Copy or symlink the sidecar project
-cp -R /path/to/dyresearch/dyresearch-sidecar ./dyresearch-sidecar
-cd dyresearch-sidecar
-
-# Install dependencies
-npm install
-
-# Compile the plugin
-npx tsup main.ts --format cjs --external obsidian
-```
-
-Restart Obsidian and enable the **DyResearch AI Sidecar** plugin in your settings. 
-
-![settings](assets/obsidian_settings.png)
-
-![restart](assets/obsidian_enable_plugin.png)
+   ```bash
+   uv run uvicorn app.server:app --host 127.0.0.1 --port 8000 --reload
+   ```
