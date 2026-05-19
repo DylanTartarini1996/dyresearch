@@ -1,10 +1,11 @@
-import os 
 import datetime
-from pathlib import Path
+import os 
 import re
-from typing import Optional
 
 from google.adk.tools.tool_context import ToolContext
+from pathlib import Path
+from rapidfuzz import fuzz, process
+from typing import Optional
 
 from ...utils.logger import get_logger
 
@@ -184,7 +185,11 @@ def read_obsidian_note(
     full_path = os.path.join(vault_root, file_path)
     
     if not os.path.exists(full_path):
-        return f"Error: File '{file_path}' not found. Use list_obsidian_notes to verify the path."
+        found_path = find_note_path(vault_root, file_path)
+        if found_path:
+            full_path = found_path
+        else:
+            return f"Error: File '{file_path}' not found. Use list_obsidian_notes to verify."
         
     try:
         with open(full_path, "r", encoding="utf-8") as f:
@@ -275,3 +280,75 @@ async def get_obsidian_relations(note_title: str, tool_context: ToolContext) -> 
     logger.info(f"Graph Traversal: Found {len(forward_links)} forward and {len(backlinks)} backlinks for {clean_title}")
     
     return "\n".join(res)
+
+
+def search_obsidian_vault(query: str, tool_context: ToolContext, limit: int = 5) -> str:
+    """
+    Scans the Obsidian vault for notes matching a search query. 
+    Uses hybrid fuzzy logic to evaluate both note titles and content bodies.
+    
+    Returns a structured report containing:
+    1. Top matches (High confidence)
+    2. Contextual snippets (for reading content)
+    """
+    vault_root = tool_context.state.get("vault_path")
+    if not vault_root or not os.path.exists(vault_root):
+        error_msg = "❌ Error: Vault path not accessible."
+        logger.error(error_msg)
+        return error_msg
+
+    clean_query = query.lower().strip()
+    scored_notes = []
+
+    # 1. Traverse vault and score files
+    for root, dirs, files in os.walk(vault_root):
+        dirs[:] = [d for d in dirs if not d.startswith('.')] # Ignore .obsidian, .git
+        
+        for file in files:
+            if not file.endswith(".md"):
+                continue
+                
+            full_path = os.path.join(root, file)
+            rel_path = os.path.relpath(full_path, vault_root)
+            note_title = Path(file).stem
+            
+            try:
+                with open(full_path, "r", encoding="utf-8", errors="ignore") as f:
+                    content = f.read()
+                
+                # Hybrid Scoring: Title (60%) + Content (40%)
+                title_score = fuzz.token_sort_ratio(clean_query, note_title.lower())
+                content_score = fuzz.partial_ratio(clean_query, content.lower())
+                final_score = (title_score * 0.6) + (content_score * 0.4)
+                
+                if final_score > 50: # Confidence threshold
+                    scored_notes.append({
+                        "title": note_title,
+                        "path": rel_path,
+                        "score": final_score,
+                        "content": content
+                    })
+            except Exception as e:
+                continue
+
+    # 2. Sort by score
+    scored_notes.sort(key=lambda x: x['score'], reverse=True)
+
+    # 3. Format output for the Professor
+    if not scored_notes:
+        return f"### 🔍 Local Vault Search\nNo relevant notes found in the vault for: '{query}'."
+
+    output = [f"### 📖 Local Vault Analysis for: '{query}'\n"]
+    
+    for res in scored_notes[:limit]:
+        # Generate a snippet around the match
+        match_idx = res['content'].lower().find(clean_query)
+        snippet_start = max(0, match_idx - 100)
+        snippet_end = min(len(res['content']), match_idx + 150)
+        snippet = res['content'][snippet_start:snippet_end].replace("\n", " ").strip()
+        
+        output.append(f"**NOTE:** `[[{res['title']}]]` (Score: {int(res['score'])}/100)")
+        output.append(f"**Use this path for read_obsidian_note:** `{res['path']}`")
+        output.append(f"> SNIPPET ...{snippet}...\n")
+
+    return "\n".join(output)
