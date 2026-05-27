@@ -56,4 +56,4 @@ COPY --from=builder /app /app
 # Expose FastAPI port
 EXPOSE 8000
 
-ENTRYPOINT ["uv", "run", "uvicorn", "app.server:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["uv", "run", "uvicorn", "dyresearch.app.server:app", "--host", "0.0.0.0", "--port", "8000"]
