@@ -1,4 +1,4 @@
-name: Build DyResearch Suite
+name: Build DyResearch Agents Suite
 
 on:
   push:
@@ -7,37 +7,6 @@ on:
   workflow_dispatch:
 
 jobs:
-  # --- BUILD THE OBSIDIAN PLUGIN ---
-  build-plugin:
-    name: Build Obsidian Plugin
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: 'dyresearch-sidecar/package.json'
-
-      - name: Install Dependencies
-        working-directory: ./dyresearch-sidecar
-        run: npm install
-
-      - name: Build Plugin
-        working-directory: ./dyresearch-sidecar
-        run: npm run build # This creates main.js
-
-      - name: Upload Plugin Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: obsidian-plugin
-          path: |
-            dyresearch-sidecar/main.js
-            dyresearch-sidecar/manifest.json
-            dyresearch-sidecar/styles.css
 
   # --- BUILD THE PYTHON ENGINE (Windows/Mac) ---
   build-engine:
@@ -88,25 +57,3 @@ jobs:
         with:
           name: engine-${{ matrix.os }}
           path: DyResearch-*.zip
-
-  # --- CREATE THE UNIFIED RELEASE ---
-  release:
-    name: Create GitHub Release
-    needs: [build-plugin, build-engine] # Wait for both to finish
-    if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download All Artifacts
-        uses: actions/download-artifact@v4
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            obsidian-plugin/main.js
-            obsidian-plugin/manifest.json
-            obsidian-plugin/styles.css
-            engine-windows-latest/DyResearch-Windows.zip
-            engine-macos-latest/DyResearch-Mac.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

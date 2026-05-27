@@ -10,7 +10,7 @@ services:
         condition: service_healthy
     environment:
       SESSION_SERVICE_URI: "postgresql+asyncpg://adk_user:adk_password@postgres:5432/adk_history"
-    command: ["uv", "run", "uvicorn", "app.server:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    command: ["uv", "run", "uvicorn", "dyresearch.app.server:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     volumes:
       - .:/app
     networks:
