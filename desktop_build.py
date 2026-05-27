@@ -1,14 +1,13 @@
 import PyInstaller.__main__
 import os
-import sys
 
-from app import APP_NAME
+from dyresearch.app import APP_NAME
 
 base_dir = os.path.abspath(os.path.dirname(__file__))
 
 def build():
     params = [
-        os.path.join(base_dir, 'app', 'server.py'), # Entry point
+        os.path.join(base_dir, 'dyresearch', 'app', 'server.py'), # Entry point
         f'--name={APP_NAME}',
         '--onedir',
         '--windowed',
@@ -19,8 +18,8 @@ def build():
         '--exclude-module=torch.distributed',
         
         # Add the folders
-        f'--add-data={os.path.join(base_dir, "app")}{os.pathsep}app',
-        f'--add-data={os.path.join(base_dir, "dyresearch")}{os.pathsep}dyresearch',
+        f'--add-data={os.path.join(base_dir, "dyresearch")}{os.pathsep}app',
+        f'--add-data={os.path.join(base_dir, "dyresearch")}{os.pathsep}core',
         
         '--hidden-import=uvicorn',
         '--hidden-import=lancedb',
