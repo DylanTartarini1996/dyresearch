@@ -1,0 +1,97 @@
+import json
+import shutil
+
+from fastapi import APIRouter, Form, HTTPException, Query, UploadFile, File
+from pathlib import Path
+from typing import List, Optional
+
+from ...core.tools.knowledge_base.vector_store import delete_source, get_documents_summary, ingest_source_chunks
+from ...core.tools.knowledge_base.ingestion import ingest_and_chunk_file
+from ...core.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+doc_router = APIRouter(tags=["documents"])
+
+# Temporary storage for processing
+UPLOAD_DIR = Path("temp_uploads")
+UPLOAD_DIR.mkdir(exist_ok=True)
+
+@doc_router.post("/ingest")
+async def ingest_documents(
+    files: List[UploadFile] = File(...),
+    subject: str = Form(default="General"),
+    source_type: str = Form(default="document"),
+    authors: str = Form(default="Unknown"),
+    metadata_json: str = Form(default="{}")
+    ):
+
+    results = []
+
+    # Parse the metadata string back into a Python dictionary
+    try:
+        extra_metadata = json.loads(metadata_json)
+    except json.JSONDecodeError:
+        extra_metadata = {}
+        
+    for file in files:
+        file_path = UPLOAD_DIR / file.filename
+        try:
+            
+            with file_path.open("wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+
+            chunks = await ingest_and_chunk_file(file_path=file_path, source_name=file.filename)
+
+            file_metadata = {
+                "filename": file.filename,
+                **extra_metadata
+            }
+            
+            ingestion_msg = await ingest_source_chunks(
+                content_chunks=chunks, 
+                subject=subject,
+                title=file.filename,
+                source_type=source_type,
+                authors=authors,
+                metadata_json=str(file_metadata)
+            )
+
+            logger.debug(f"{ingestion_msg}")
+
+            results.append({"filename": file.filename, "status": "success"})
+        except Exception as e:
+            logger.error(f"Failed to ingest {file.filename}: {e}")
+            results.append({"filename": file.filename, "status": "error", "detail": str(e)})
+        
+        finally:
+            if file_path.exists():
+                file_path.unlink() 
+                
+    return {"results": results}
+
+
+@doc_router.get("/library")
+async def get_library_documents(
+    title: Optional[str] = None,
+    author: Optional[str] = None,
+    subject: Optional[str] = None,
+    source_type: Optional[str] = None,
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0)
+):
+    return await get_documents_summary(
+        title=title, author=author, subject=subject, 
+        source_type=source_type, limit=limit, offset=offset
+    )
+
+
+@doc_router.delete("/library/{title}")
+async def delete_library_document(title: str):
+    try:
+        await delete_source(title=title)
+        return {"status": "success", "message": f"Document '{title}' removed from Knowledge Base."}
+    
+    except Exception as e:
+        logger.error(f"❌ Failed to delete document: {e}")
+        raise HTTPException(status_code=500, detail="Delete failed")
