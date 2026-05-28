@@ -18,7 +18,7 @@ logger = get_logger(__name__)
 
 def get_default_llm() -> LLMConf:
     return LLMConf(
-        model=os.getenv("GOOGLE_MODEL_NAME", "gemini-3.1-flash-lite-preview"),
+        model=os.getenv("GOOGLE_MODEL_NAME", "gemini-3.5-flash"),
         type=ModelType.GOOGLE,
         api_key=os.getenv("GOOGLE_API_KEY")
     )

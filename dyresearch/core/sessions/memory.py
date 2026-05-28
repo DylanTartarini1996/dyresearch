@@ -35,35 +35,22 @@ async def rename_adk_session(
             user_id=user_id
         )
         
-        # Update the 'events' table directly via SQL
-        # We must do this BEFORE deleting the old session to avoid data loss.
+       # Update the 'events' table directly via SQL
         async with get_db_context(db_config) as db_session:
             
             update_stmt = (
                 update(StorageEvent)
                 .where(
-                    old_session.id == old_session_id,  # WHERE session_id = :old_session_id
-                    old_session.user_id == user_id,            # AND user_id = :user_id
-                    new_session.app_name == app_name            # AND app_name = :app_name
+                    StorageEvent.session_id == old_session_id,  # Referencing the Model columns
+                    StorageEvent.user_id == user_id,
+                    StorageEvent.app_name == app_name
                 )
                 .values(
-                    session_id=new_session_id  # SET session_id = :new_session_id
+                    session_id=new_session_id
                 )
             )
 
-            # 2. Execute the statement
-            # We pass the parameters directly into the execution context of the statement.
-            await db_session.execute(
-                update_stmt,
-                {
-                    "new_session_id": new_session_id,
-                    "old_session_id": old_session_id,
-                    "user_id": user_id,
-                    "app_name": app_name
-                }
-            )
-            
-            # Commit the update so the foreign keys are successfully transferred
+            await db_session.execute(update_stmt)
             await db_session.commit()
 
             logger.info(f"New Session {new_session_id} created")
