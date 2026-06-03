@@ -1,6 +1,12 @@
 # 📚 DyResearch
 
-> May, 2026
+> June, 2026
+
+
+> [!NOTE] 
+> This is a legacy branch. Might be used someday to create a fully dockerized package of server app + obsidian plugin
+
+
 
 A Multi-Agent AI system designed to aid in studying, learning, and researching topics.  
 
