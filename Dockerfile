@@ -4,30 +4,24 @@
 FROM python:3.12-slim AS builder
 
 USER root
-
-# 1. Install build tools for psycopg2 (gcc and libpq-dev)
 RUN apt-get update && apt-get install -y gcc libpq-dev && rm -rf /var/lib/apt/lists/*
-
-# 2. Safely grab uv without needing curl
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
-# Set environment vars
-ENV UV_SYSTEM_PYTHON=1 \
-    PYTHONUNBUFFERED=1
-
-# Set work directory
 WORKDIR /app
 
-# Copy dependency list and install packages
 COPY uv.lock ./uv.lock
 COPY pyproject.toml ./pyproject.toml
-RUN uv sync
+COPY README.md ./README.md
 
-# Copy application code
+# 1. Install dependencies ONLY. This layer caches heavily!
+RUN uv sync --no-install-project
+
+# 2. Copy application code
 COPY dyresearch ./dyresearch
-COPY app ./app
 COPY config.env ./config.env
 
+# 3. Sync again to install the dyresearch project itself
+RUN uv sync
 
 ########################
 # Stage 2 — Runtime
@@ -35,25 +29,19 @@ COPY config.env ./config.env
 FROM python:3.12-slim
 
 USER root
-
-# 3. Install the Postgres runtime library so psycopg2 can actually connect
 RUN apt-get update && apt-get install -y libpq5 && rm -rf /var/lib/apt/lists/*
-
-# Safely grab uv without needing curl
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
-
-# Set environment vars
-ENV UV_SYSTEM_PYTHON=1 \
-    PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# Copy installed Python packages and source code from builder
-COPY --from=builder /usr/local/lib/python3.12 /usr/local/lib/python3.12
-COPY --from=builder /usr/local/bin /usr/local/bin
+# ONLY copy the app code and the virtual environment from the builder
 COPY --from=builder /app /app
 
-# Expose FastAPI port
+# Tell uv to use the virtual environment we copied over
+ENV VIRTUAL_ENV=/app/.venv
+ENV PATH="/app/.venv/bin:$PATH"
+
 EXPOSE 8000
 
+# Run using the venv's python environment directly
 ENTRYPOINT ["uv", "run", "uvicorn", "dyresearch.app.server:app", "--host", "0.0.0.0", "--port", "8000"]
