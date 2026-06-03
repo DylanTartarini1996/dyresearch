@@ -1,22 +1,4 @@
 services:
-  app:
-    build: .
-    ports:
-      - "8000:8000"
-    env_file:
-      - config.env
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      SESSION_SERVICE_URI: "postgresql+asyncpg://adk_user:adk_password@postgres:5432/adk_history"
-    command: ["uv", "run", "uvicorn", "dyresearch.app.server:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
-    volumes:
-      - .:/app
-    networks:
-      - graphnet
-
-  
   postgres: 
     image: pgvector/pgvector:pg15
     container_name: adk-postgres
@@ -36,6 +18,25 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+  
+  fastapi:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dyresearch-api
+    restart: always
+    ports:
+      - "8000:8000"
+    env_file:
+      - config.env
+    volumes:
+      # Works dynamically for both Windows and Mac paths
+      - ${OBSIDIAN_VAULT_PATH}:${OBSIDIAN_VAULT_PATH}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - graphnet
 
 volumes:
   pg_data: 
